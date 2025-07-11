@@ -71,6 +71,7 @@ import {
   initializeInspectorConfig,
   saveInspectorConfig,
 } from "./utils/configUtils";
+import TestTab from "./components/TestTab";
 
 const CONFIG_LOCAL_STORAGE_KEY = "inspectorConfig_v1";
 
@@ -567,6 +568,10 @@ const App = () => {
     }
   };
 
+  const handleCallTool = (name:string, params: Record<string, unknown>) => {
+      callTool(name, params)
+  }
+
   const handleRootsChange = async () => {
     await sendNotification({ method: "notifications/roots/list_changed" });
   };
@@ -738,6 +743,10 @@ const App = () => {
                   <Key className="w-4 h-4 mr-2" />
                   Auth
                 </TabsTrigger>
+                <TabsTrigger value="test">
+                  <Key className="w-4 h-4 mr-2" />
+                  Test
+                </TabsTrigger>
               </TabsList>
 
               <div className="w-full">
@@ -885,6 +894,7 @@ const App = () => {
                       setRoots={setRoots}
                       onRootsChange={handleRootsChange}
                     />
+                    <TestTab tools={tools} callTool={handleCallTool}  /> 
                     <AuthDebuggerWrapper />
                   </>
                 )}
