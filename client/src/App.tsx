@@ -568,8 +568,8 @@ const App = () => {
     }
   };
 
-  const handleCallTool = (name:string, params: Record<string, unknown>) => {
-      callTool(name, params)
+  const handleCallTool = async (name:string, params: Record<string, unknown>) => {
+    return await callTool(name, params)
   }
 
   const handleRootsChange = async () => {
@@ -894,7 +894,7 @@ const App = () => {
                       setRoots={setRoots}
                       onRootsChange={handleRootsChange}
                     />
-                    <TestTab tools={tools} callTool={handleCallTool}  /> 
+                    <TestTab tools={tools} callTool={handleCallTool} isConnected={true}  /> 
                     <AuthDebuggerWrapper />
                   </>
                 )}
