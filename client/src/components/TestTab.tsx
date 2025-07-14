@@ -1,10 +1,10 @@
-import React, { useState, useCallback } from 'react';
-import { Tool } from '@modelcontextprotocol/sdk/types.js';
-import { MultiLevelSelector}  from './MultiLevelSelector';
+import React, { useState, useCallback, useMemo, useEffect } from "react";
+import { Tool } from "@modelcontextprotocol/sdk/types.js";
+import { MultiLevelSelector } from "./MultiLevelSelector";
 
 interface TestResult {
   toolName: string;
-  status: 'running' | 'success' | 'error';
+  status: "running" | "success" | "error";
   result?: any;
   error?: string;
   duration?: number;
@@ -17,71 +17,127 @@ interface TestTabProps {
   isConnected: boolean;
 }
 
-const TestTab: React.FC<TestTabProps> = ({ tools, onCallTool, isConnected }) => {
+function parsedToolForSelector(tools: Tool[]) {
+  const delimiter = "-";
+  let firstDelimiter;
+  const map = new Map();
+
+  function ensureCategory(category?: string) {
+    if (!category) category = "uncategorized";
+    if (!map.has(category)) {
+      map.set(category, {
+        name: category,
+        
+        expanded: true,
+        items: [],
+      });
+    }
+
+    return map.get(category);
+  }
+
+  for (const tool of tools) {
+    firstDelimiter = tool.name.indexOf(delimiter);
+
+    if (firstDelimiter === -1) {
+      const category = ensureCategory();
+      category.items.push({
+        name: tool,
+      });
+    } else {
+      const category = ensureCategory(tool.name.substring(0, firstDelimiter));
+      category.items.push({
+        name: tool.name.substring(firstDelimiter + 1),
+      });
+    }
+  }
+
+  return [...map.values()]
+}
+
+const TestTab: React.FC<TestTabProps> = ({
+  tools,
+  onCallTool,
+  isConnected,
+}) => {
   const [selectedTools, setSelectedTools] = useState<Set<string>>(new Set());
   const [testResults, setTestResults] = useState<TestResult[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [toolArguments, setToolArguments] = useState<Record<string, any>>({});
+  const [myCategories, setMyCategories] = useState<any>([])
 
-const generateItems = (base, count) => {
+
+  useEffect(() => {
+
+    setMyCategories(parsedToolForSelector(tools))
+  },[tools])
+
+  const generateItems = (base, count) => {
     return Array.from({ length: count }, (_, i) => ({
-      name: `${base} Test ${(i + 1).toString().padStart(3, '0')}`,
-      selected: false
+      name: `${base} Test ${(i + 1).toString().padStart(3, "0")}`,
+      selected: false,
     }));
   };
 
   const demoCategories = [
     {
-      name: 'Unit Tests',
+      name: "Unit Tests",
       expanded: true,
-      items: generateItems('Unit', 120)
+      items: generateItems("Unit", 120),
     },
     {
-      name: 'Integration Tests',
+      name: "Integration Tests",
       expanded: false,
-      items: generateItems('Integration', 85)
+      items: generateItems("Integration", 85),
     },
     {
-      name: 'E2E Tests',
+      name: "E2E Tests",
       expanded: false,
-      items: generateItems('E2E', 45)
+      items: generateItems("E2E", 45),
     },
     {
-      name: 'Performance Tests',
+      name: "Performance Tests",
       expanded: false,
-      items: generateItems('Performance', 30)
-    }
+      items: generateItems("Performance", 30),
+    },
   ];
 
-  const handleToolSelection = useCallback((toolName: string, isSelected: boolean) => {
-    setSelectedTools(prev => {
-      const newSet = new Set(prev);
-      if (isSelected) {
-        newSet.add(toolName);
-      } else {
-        newSet.delete(toolName);
-      }
-      return newSet;
-    });
-  }, []);
+
+  const handleToolSelection = useCallback(
+    (toolName: string, isSelected: boolean) => {
+      setSelectedTools((prev) => {
+        const newSet = new Set(prev);
+        if (isSelected) {
+          newSet.add(toolName);
+        } else {
+          newSet.delete(toolName);
+        }
+        return newSet;
+      });
+    },
+    [],
+  );
 
   const handleSelectAll = useCallback(() => {
     if (selectedTools.size === tools.length) {
       setSelectedTools(new Set());
     } else {
-      setSelectedTools(new Set(tools.map(tool => tool.name)));
+      setSelectedTools(new Set(tools.map((tool) => tool.name)));
     }
   }, [tools, selectedTools.size]);
 
-  const handleArgumentChange = useCallback((toolName: string, argName: string, value: any) => {
-    setToolArguments(prev => ({
-      ...prev,
-      [toolName]: {
-        ...prev[toolName],
-        [argName]: value
-      }
-    }));
-  }, []);
+  const handleArgumentChange = useCallback(
+    (toolName: string, argName: string, value: any) => {
+      setToolArguments((prev) => ({
+        ...prev,
+        [toolName]: {
+          ...prev[toolName],
+          [argName]: value,
+        },
+      }));
+    },
+    [],
+  );
 
   const runTests = useCallback(async () => {
     if (!isConnected || selectedTools.size === 0) return;
@@ -93,24 +149,24 @@ const generateItems = (base, count) => {
       const startTime = Date.now();
       const result: TestResult = {
         toolName,
-        status: 'running',
-        timestamp: new Date()
+        status: "running",
+        timestamp: new Date(),
       };
 
       try {
         const args = toolArguments[toolName] || {};
         const response = await onCallTool(toolName, args);
-        
-        result.status = 'success';
+
+        result.status = "success";
         result.result = response;
         result.duration = Date.now() - startTime;
       } catch (error) {
-        result.status = 'error';
+        result.status = "error";
         result.error = error instanceof Error ? error.message : String(error);
         result.duration = Date.now() - startTime;
       }
 
-      setTestResults(prev => [...prev, result]);
+      setTestResults((prev) => [...prev, result]);
       return result;
     });
 
@@ -125,44 +181,56 @@ const generateItems = (base, count) => {
     setTestResults([]);
   }, []);
 
-  const getStatusColor = (status: TestResult['status']) => {
+  const getStatusColor = (status: TestResult["status"]) => {
     switch (status) {
-      case 'running': return 'text-blue-600';
-      case 'success': return 'text-green-600';
-      case 'error': return 'text-red-600';
-      default: return 'text-gray-600';
+      case "running":
+        return "text-blue-600";
+      case "success":
+        return "text-green-600";
+      case "error":
+        return "text-red-600";
+      default:
+        return "text-gray-600";
     }
   };
 
-  const getStatusIcon = (status: TestResult['status']) => {
+  const getStatusIcon = (status: TestResult["status"]) => {
     switch (status) {
-      case 'running': return '🔄';
-      case 'success': return '✅';
-      case 'error': return '❌';
-      default: return '⏳';
+      case "running":
+        return "🔄";
+      case "success":
+        return "✅";
+      case "error":
+        return "❌";
+      default:
+        return "⏳";
     }
   };
 
   const renderArgumentInput = (tool: Tool, argName: string, argSchema: any) => {
-    const value = toolArguments[tool.name]?.[argName] || '';
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const value = toolArguments[tool.name]?.[argName] || "";
+    const handleChange = (
+      e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
+    ) => {
       let newValue: any = e.target.value;
-      
+
       // Type conversion based on schema
-      if (argSchema.type === 'number') {
+      if (argSchema.type === "number") {
         newValue = parseFloat(newValue) || 0;
-      } else if (argSchema.type === 'boolean') {
-        newValue = e.target.value === 'true';
+      } else if (argSchema.type === "boolean") {
+        newValue = e.target.value === "true";
       }
-      
+
       handleArgumentChange(tool.name, argName, newValue);
     };
 
-    if (argSchema.type === 'boolean') {
+    if (argSchema.type === "boolean") {
       return (
-        <select 
-          value={value.toString()} 
-          onChange={(e) => handleArgumentChange(tool.name, argName, e.target.value === 'true')}
+        <select
+          value={value.toString()}
+          onChange={(e) =>
+            handleArgumentChange(tool.name, argName, e.target.value === "true")
+          }
           className="w-full p-2 border rounded text-sm"
         >
           <option value="false">false</option>
@@ -173,7 +241,7 @@ const generateItems = (base, count) => {
 
     return (
       <input
-        type={argSchema.type === 'number' ? 'number' : 'text'}
+        type={argSchema.type === "number" ? "number" : "text"}
         value={value}
         onChange={handleChange}
         placeholder={argSchema.description || argName}
@@ -186,8 +254,11 @@ const generateItems = (base, count) => {
     <div className="flex flex-col h-full">
       <div className="flex-shrink-0 p-4 border-b">
         <div className="flex items-center justify-between mb-4">
-        <p>hi</p>
-        <MultiLevelSelector categories={demoCategories} onRunTests={async (data) => console.log(data)} />
+          <p>hi</p>
+          {myCategories && <MultiLevelSelector
+            categories={myCategories}
+            onRunTests={async (data) => console.log(data)}
+          />}
           <h2 className="text-xl font-semibold">Multi-Tool Test Runer</h2>
           <div className="flex gap-2">
             <button
@@ -195,7 +266,9 @@ const generateItems = (base, count) => {
               disabled={!isConnected || tools.length === 0}
               className="px-3 py-1 text-sm border rounded hover:bg-gray-50 disabled:opacity-50"
             >
-              {selectedTools.size === tools.length ? 'Deselect All' : 'Select All'}
+              {selectedTools.size === tools.length
+                ? "Deselect All"
+                : "Select All"}
             </button>
             <button
               onClick={clearResults}
@@ -209,7 +282,7 @@ const generateItems = (base, count) => {
               disabled={!isConnected || selectedTools.size === 0 || isRunning}
               className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
             >
-              {isRunning ? 'Running...' : `Run ${selectedTools.size} Tools`}
+              {isRunning ? "Running..." : `Run ${selectedTools.size} Tools`}
             </button>
           </div>
         </div>
@@ -221,7 +294,8 @@ const generateItems = (base, count) => {
         )}
 
         <div className="text-sm text-gray-600 mb-2">
-          Select tools to run concurrently. {selectedTools.size} of {tools.length} tools selected.
+          Select tools to run concurrently. {selectedTools.size} of{" "}
+          {tools.length} tools selected.
         </div>
       </div>
 
@@ -239,31 +313,46 @@ const generateItems = (base, count) => {
                     <input
                       type="checkbox"
                       checked={selectedTools.has(tool.name)}
-                      onChange={(e) => handleToolSelection(tool.name, e.target.checked)}
+                      onChange={(e) =>
+                        handleToolSelection(tool.name, e.target.checked)
+                      }
                       className="mt-1"
                     />
                     <div className="flex-1">
                       <div className="font-medium">{tool.name}</div>
                       {tool.description && (
-                        <div className="text-sm text-gray-600 mt-1">{tool.description}</div>
-                      )}
-                      
-                      {/* Tool Arguments */}
-                      {tool.inputSchema && 
-                       tool.inputSchema.properties && 
-                       Object.keys(tool.inputSchema.properties).length > 0 && (
-                        <div className="mt-3 space-y-2">
-                          <div className="text-sm font-medium">Arguments:</div>
-                          {Object.entries(tool.inputSchema.properties).map(([argName, argSchema]: [string, any]) => (
-                            <div key={argName} className="flex gap-2 items-center">
-                              <label className="text-sm min-w-0 flex-shrink-0 w-20">
-                                {argName}:
-                              </label>
-                              {renderArgumentInput(tool, argName, argSchema)}
-                            </div>
-                          ))}
+                        <div className="text-sm text-gray-600 mt-1">
+                          {tool.description}
                         </div>
                       )}
+
+                      {/* Tool Arguments */}
+                      {tool.inputSchema &&
+                        tool.inputSchema.properties &&
+                        Object.keys(tool.inputSchema.properties).length > 0 && (
+                          <div className="mt-3 space-y-2">
+                            <div className="text-sm font-medium">
+                              Arguments:
+                            </div>
+                            {Object.entries(tool.inputSchema.properties).map(
+                              ([argName, argSchema]: [string, any]) => (
+                                <div
+                                  key={argName}
+                                  className="flex gap-2 items-center"
+                                >
+                                  <label className="text-sm min-w-0 flex-shrink-0 w-20">
+                                    {argName}:
+                                  </label>
+                                  {renderArgumentInput(
+                                    tool,
+                                    argName,
+                                    argSchema,
+                                  )}
+                                </div>
+                              ),
+                            )}
+                          </div>
+                        )}
                     </div>
                   </div>
                 </div>
@@ -282,9 +371,13 @@ const generateItems = (base, count) => {
                   <div key={index} className="border rounded p-3">
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-2">
-                        <span className="text-lg">{getStatusIcon(result.status)}</span>
+                        <span className="text-lg">
+                          {getStatusIcon(result.status)}
+                        </span>
                         <span className="font-medium">{result.toolName}</span>
-                        <span className={`text-sm ${getStatusColor(result.status)}`}>
+                        <span
+                          className={`text-sm ${getStatusColor(result.status)}`}
+                        >
                           {result.status}
                         </span>
                       </div>
@@ -292,7 +385,7 @@ const generateItems = (base, count) => {
                         {result.duration && `${result.duration}ms`}
                       </div>
                     </div>
-                    
+
                     <div className="text-xs text-gray-500 mb-2">
                       {result.timestamp.toLocaleTimeString()}
                     </div>

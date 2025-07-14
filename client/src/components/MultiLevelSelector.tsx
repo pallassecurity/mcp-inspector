@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 
 // Types
 interface TestItem {
@@ -70,6 +70,11 @@ const Clock: React.FC<{ className?: string }> = ({ className = "" }) => (
 // Custom hook for managing selection state
 const useSelection = (initialData: SelectionData) => {
     const [data, setData] = useState<SelectionData>(initialData);
+
+    // Add this effect:
+    useEffect(() => {
+        setData(initialData);
+    }, [initialData]);
 
     const toggleCategory = useCallback((categoryName: string) => {
         setData(prev => ({
