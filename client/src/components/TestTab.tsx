@@ -1,7 +1,11 @@
 import React, { useState, useCallback, useMemo, useEffect } from "react";
 import { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { MultiLevelSelector } from "./MultiLevelSelector";
-import data from "../data/testCases.csv"
+import { PallasService, TestCaseManager } from "../lib/pallas";
+const created = PallasService.create(new TestCaseManager())
+created.loadTestParameters()
+
+
 
 interface TestResult {
   toolName: string;
@@ -59,6 +63,7 @@ function parsedToolForSelector(tools: Tool[]) {
 const TestTab: React.FC<TestTabProps> = ({
   tools,
   onCallTool,
+  callTool,
   isConnected,
 }) => {
   const [selectedTools, setSelectedTools] = useState<Set<string>>(new Set());
@@ -67,14 +72,11 @@ const TestTab: React.FC<TestTabProps> = ({
   const [toolArguments, setToolArguments] = useState<Record<string, any>>({});
   const [myCategories, setMyCategories] = useState<any>([])
 
-  useEffect(() => {
-
-      console.log(data)
-  },[])
 
 
   useEffect(() => {
 
+     console.debug("hi", created.getTestCases()) 
     setMyCategories(parsedToolForSelector(tools))
   },[tools])
 
@@ -146,10 +148,12 @@ const TestTab: React.FC<TestTabProps> = ({
   );
 
   const runTests = useCallback(async () => {
+      console.log('run test', isConnected, selectedTools)
     if (!isConnected || selectedTools.size === 0) return;
 
     setIsRunning(true);
     setTestResults([]);
+
 
     const testPromises = Array.from(selectedTools).map(async (toolName) => {
       const startTime = Date.now();
@@ -263,7 +267,23 @@ const TestTab: React.FC<TestTabProps> = ({
           <p>hi</p>
           {myCategories && <MultiLevelSelector
             categories={myCategories}
-            onRunTests={async (data) => console.log(data)}
+            onRunTests={async (data) => {
+
+                console.log(data)
+                console.log(created.getTestCases())
+
+    const filter = filterTestCases(data, created.getTestCases())
+    console.log(filter)
+    console.info("run these")
+    for (const [name, tool] of filter.entries()){
+
+        console.info("calling tool: " + name)
+
+        callTool(name, tool.arguments)
+
+        
+    }
+            }}
           />}
           <h2 className="text-xl font-semibold">Multi-Tool Test Runer</h2>
           <div className="flex gap-2">
@@ -419,5 +439,33 @@ const TestTab: React.FC<TestTabProps> = ({
     </div>
   );
 };
+
+
+function filterTestCases(declaration, available){
+    console.log({
+        declaration,
+        available
+    })
+
+    const map = new Map()
+    for (const selected of declaration){
+    
+
+        const key = `${selected.category}-${selected.test}`
+        console.debug("checking", key, available.has(key))
+       if(available.has(key)){
+
+           console.info("has " + key)
+            map.set(key, available.get(key))
+       }
+    }
+
+
+
+    
+    return map
+
+
+}
 
 export default TestTab;

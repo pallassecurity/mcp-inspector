@@ -72,12 +72,6 @@ import {
   saveInspectorConfig,
 } from "./utils/configUtils";
 import TestTab from "./components/TestTab";
-import data from "./data/testCases.csv"
-import { PallasService, TestCaseManager } from "./lib/pallas";
-const created = PallasService.create(new TestCaseManager())
-created.createTestCase("one", {})
-created.executeTest("one")
-
 const CONFIG_LOCAL_STORAGE_KEY = "inspectorConfig_v1";
 
 const App = () => {
@@ -384,12 +378,6 @@ const App = () => {
       window.location.hash = "resources";
     }
   }, []);
-
-  useEffect(() => {
-
-      console.log(data)
-  },[])
-
 
 
   const handleApproveSampling = (id: number, result: CreateMessageResult) => {
