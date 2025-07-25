@@ -72,6 +72,11 @@ import {
   saveInspectorConfig,
 } from "./utils/configUtils";
 import TestTab from "./components/TestTab";
+import data from "./data/testCases.csv"
+import { PallasService, TestCaseManager } from "./lib/pallas";
+const created = PallasService.create(new TestCaseManager())
+created.createTestCase("one", {})
+created.executeTest("one")
 
 const CONFIG_LOCAL_STORAGE_KEY = "inspectorConfig_v1";
 
@@ -380,6 +385,13 @@ const App = () => {
     }
   }, []);
 
+  useEffect(() => {
+
+      console.log(data)
+  },[])
+
+
+
   const handleApproveSampling = (id: number, result: CreateMessageResult) => {
     setPendingSampleRequests((prev) => {
       const request = prev.find((r) => r.id === id);
@@ -625,7 +637,6 @@ const App = () => {
       </Suspense>
     );
   }
-
   return (
     <div className="flex h-screen bg-background">
       <div

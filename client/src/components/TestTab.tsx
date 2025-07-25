@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useMemo, useEffect } from "react";
 import { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { MultiLevelSelector } from "./MultiLevelSelector";
+import data from "../data/testCases.csv"
 
 interface TestResult {
   toolName: string;
@@ -65,6 +66,11 @@ const TestTab: React.FC<TestTabProps> = ({
   const [isRunning, setIsRunning] = useState(false);
   const [toolArguments, setToolArguments] = useState<Record<string, any>>({});
   const [myCategories, setMyCategories] = useState<any>([])
+
+  useEffect(() => {
+
+      console.log(data)
+  },[])
 
 
   useEffect(() => {
