@@ -1,46 +1,62 @@
+
 /**
- * Interface for child classes that expose methods to PallasService
+ * Contract for child classes that expose methods to PallasService
  */
-interface IMethodExposer {
+interface MethodExposer {
     /**
-     * Static property containing method names to expose to parent service
+     * Method names available for exposure to parent service
      */
     exposesMethods: string[];
 }
 
 /**
- * Interface for method conflict information
+ * Represents a method name conflict between classes
  */
-interface IMethodConflict {
+interface MethodConflict {
     methodName: string;
     conflictingClasses: string[];
 }
 
 /**
- * Type helper to extract method signatures from a class
+ * Logging contract for service operations
  */
-type ExtractMethods<T> = {
-    [K in keyof T]: T[K] extends (...args: any[]) => any ? T[K] : never;
-};
-
-/**
- * Type helper to pick only the exposed methods from a class
- */
-type PickExposedMethods<T, K extends keyof T> = Pick<ExtractMethods<T>, K>;
-
-/**
- * Logger interface for dependency injection
- */
-interface ILogger {
+interface Logger {
     warn(message: string, context?: Record<string, any>): void;
     error(message: string, context?: Record<string, any>): void;
     info(message: string, context?: Record<string, any>): void;
 }
 
 /**
- * Default console logger implementation
+ * Configuration options for PallasService behavior
  */
-class ConsoleLogger implements ILogger {
+interface PallasServiceConfig {
+    logger?: Logger;
+    throwOnConflicts?: boolean;
+    allowMethodOverride?: boolean;
+}
+
+
+/**
+ * Extracts only method signatures from a class type
+ */
+type ExtractMethods<T> = {
+    [K in keyof T]: T[K] extends (...args: any[]) => any ? T[K] : never;
+};
+
+/**
+ * Selects only the exposed methods from a class type
+ */
+type PickExposedMethods<T, K extends keyof T> = Pick<ExtractMethods<T>, K>;
+
+/**
+ * Converts union types to intersection types
+ */
+type UnionToIntersection<U> = (U extends any ? (k: U) => void : never) extends (k: infer I) => void ? I : never;
+
+/**
+ * Default console-based logger implementation
+ */
+class ConsoleLogger implements Logger {
     warn(message: string, context?: Record<string, any>): void {
         console.warn(message, context);
     }
@@ -54,29 +70,16 @@ class ConsoleLogger implements ILogger {
     }
 }
 
-
-
-
-
 /**
- * Configuration options for PallasService
+ * Base service class for method composition and child management
  */
-interface IPallasServiceConfig {
-    logger?: ILogger;
-    throwOnConflicts?: boolean;
-    allowMethodOverride?: boolean;
-}
-
-/**
- * Base PallasService class
- */
-export class PallasServiceBase {
+class PallasServiceBase {
     private readonly _childInstances = new Map<string, any>();
     private readonly _exposedMethods = new Map<string, { instance: any; methodName: string; className: string }>();
-    private readonly _logger: ILogger;
-    private readonly _config: Required<IPallasServiceConfig>;
+    private readonly _logger: Logger;
+    private readonly _config: Required<PallasServiceConfig>;
 
-    constructor(config: IPallasServiceConfig = {}) {
+    constructor(config: PallasServiceConfig = {}) {
         this._config = {
             logger: config.logger ?? new ConsoleLogger(),
             throwOnConflicts: config.throwOnConflicts ?? false,
@@ -86,12 +89,10 @@ export class PallasServiceBase {
     }
 
     /**
-     * Registers a child class instance and exposes its methods with proper typing
-     * @param instance - Instance of the child class
-     * @param className - Optional class name for identification (defaults to constructor name)
+     * Registers a child class instance and exposes its designated methods
      */
     public registerChild<
-        T extends IMethodExposer,
+        T extends MethodExposer,
         K extends keyof T = Extract<keyof T, (typeof T)['exposesMethods'][number]>
     >(
         instance: T,
@@ -111,7 +112,6 @@ export class PallasServiceBase {
 
         this._childInstances.set(resolvedClassName, instance);
 
-        // Get exposed methods from the class constructor
         const constructor = instance.constructor as any;
         const exposedMethods: string[] = constructor.exposesMethods || [];
 
@@ -129,8 +129,7 @@ export class PallasServiceBase {
     }
 
     /**
-     * Unregisters a child class and removes its exposed methods
-     * @param className - Name of the class to unregister
+     * Removes a child class and cleans up its exposed methods
      */
     public unregisterChild(className: string): boolean {
         if (!this._childInstances.has(className)) {
@@ -138,7 +137,6 @@ export class PallasServiceBase {
             return false;
         }
 
-        // Remove all methods exposed by this class
         const methodsToRemove: string[] = [];
         for (const [methodName, methodInfo] of this._exposedMethods.entries()) {
             if (methodInfo.className === className) {
@@ -162,7 +160,7 @@ export class PallasServiceBase {
     }
 
     /**
-     * Gets information about all registered child classes
+     * Returns metadata about all registered child classes
      */
     public getRegisteredChildren(): Record<string, { exposedMethods: string[] }> {
         const result: Record<string, { exposedMethods: string[] }> = {};
@@ -181,9 +179,9 @@ export class PallasServiceBase {
     }
 
     /**
-     * Checks for method name conflicts across all registered classes
+     * Identifies method name conflicts across registered classes
      */
-    public getMethodConflicts(): IMethodConflict[] {
+    public getMethodConflicts(): MethodConflict[] {
         const methodCounts = new Map<string, string[]>();
 
         for (const [methodName, methodInfo] of this._exposedMethods.entries()) {
@@ -202,8 +200,7 @@ export class PallasServiceBase {
     }
 
     /**
-     * Exposes methods from a child instance to this service
-     * @private
+     * Binds child instance methods to the service with conflict detection
      */
     private _exposeMethodsFromChild(
         instance: any,
@@ -213,7 +210,6 @@ export class PallasServiceBase {
         const conflicts: string[] = [];
 
         for (const methodName of exposedMethods) {
-            // Check if method exists on the instance
             if (typeof instance[methodName] !== 'function') {
                 this._logger.error(
                     `Method '${methodName}' not found on class '${className}' or is not a function`
@@ -221,7 +217,6 @@ export class PallasServiceBase {
                 continue;
             }
 
-            // Check for conflicts with existing methods
             if (this._exposedMethods.has(methodName)) {
                 const existingMethod = this._exposedMethods.get(methodName)!;
                 conflicts.push(methodName);
@@ -239,7 +234,6 @@ export class PallasServiceBase {
                 }
             }
 
-            // Check for conflicts with PallasService's own methods
             if (methodName in this && typeof (this as any)[methodName] === 'function') {
                 this._logger.warn(
                     `Method name conflict: '${methodName}' conflicts with PallasService's built-in method`,
@@ -251,7 +245,6 @@ export class PallasServiceBase {
                 }
             }
 
-            // Bind and expose the method
             (this as any)[methodName] = instance[methodName].bind(instance);
             this._exposedMethods.set(methodName, {
                 instance,
@@ -269,40 +262,14 @@ export class PallasServiceBase {
 }
 
 /**
- * Main PallasService class with method composition support
- * 
- * Usage for proper typing:
- * 
- * 1. Create your service instance
- * 2. Register child classes
- * 3. Use declaration merging for full type safety
- * 
- * @example
- * ```typescript
- * const pallasService = new PallasService();
- * const testManager = new TestCaseManager();
- * pallasService.registerChild(testManager);
- * 
- * // For full type safety, use declaration merging:
- * declare module './PallasService' {
- *   interface PallasService extends 
- *     Pick<TestCaseManager, 'createTestCase' | 'executeTest' | 'validateResults'> {}
- * }
- * 
- * // Now you get full IntelliSense:
- * pallasService.createTestCase('test1', {}); // ✅ Fully typed
- * pallasService.executeTest('test1');        // ✅ Fully typed
- * ```
+ * Enhanced service class with fluent API for method composition
  */
-export class PallasService extends PallasServiceBase {
+class PallasService extends PallasServiceBase {
     /**
-     * Type-safe method to register a child and get a properly typed service
-     * @param instance - Instance of the child class
-     * @param className - Optional class name for identification
-     * @returns A typed version of the service with exposed methods
+     * Registers a child and returns a typed service instance
      */
     public withChild<
-        T extends IMethodExposer,
+        T extends MethodExposer,
         K extends keyof T = Extract<keyof T, (typeof T)['exposesMethods'][number]>
     >(
         instance: T,
@@ -313,13 +280,11 @@ export class PallasService extends PallasServiceBase {
     }
 
     /**
-     * Create a new PallasService with multiple children registered and properly typed
-     * @param children - Array of child instances to register
-     * @returns A new PallasService instance with all children registered
+     * Creates a new service instance with multiple children pre-registered
      */
-    public static create<T extends IMethodExposer[]>(...children: T): PallasService &
+    public static create<T extends MethodExposer[]>(...children: T): PallasService &
         UnionToIntersection<{
-            [K in keyof T]: T[K] extends IMethodExposer
+            [K in keyof T]: T[K] extends MethodExposer
             ? PickExposedMethods<T[K], Extract<keyof T[K], (typeof T[K])['exposesMethods'][number]>>
             : never;
         }[number]> {
@@ -333,57 +298,63 @@ export class PallasService extends PallasServiceBase {
     }
 }
 
-// Utility type to convert union to intersection
-type UnionToIntersection<U> = (U extends any ? (k: U) => void : never) extends (k: infer I) => void ? I : never;
-
+/**
+ * Represents a tool configuration with server and execution context
+ */
 class PallasTool {
+    private fullName: string;
+    private server: string;
+    private toolName: string;
+    private args: any;
 
-
-    private fullName
-    private server
-    private toolName
-    private args
-
-
-    constructor({ server, toolName, args, delimiter = "-" }) {
-
-        this.server = server
-        this.toolName = toolName
-        this.fullName = [this.server, delimiter, this.toolName].join("")
-        this.args = args
-
+    constructor({ server, toolName, args, delimiter = "-" }: {
+        server: string;
+        toolName: string;
+        args: any;
+        delimiter?: string;
+    }) {
+        this.server = server;
+        this.toolName = toolName;
+        this.fullName = [this.server, delimiter, this.toolName].join("");
+        this.args = args;
     }
 
-    get name() {
-        return this.fullName
+    get name(): string {
+        return this.fullName;
     }
 
-    get arguments() {
-        return this.args
+    get arguments(): any {
+        return this.args;
     }
 
-    isSameTool(fullString) {
-        return fullString === this.fullName
+    /**
+     * Checks if the provided string matches this tool's full name
+     */
+    isSameTool(fullString: string): boolean {
+        return fullString === this.fullName;
     }
 
-    isSameServerAndTool(server, tool){
-        return server === this.server && tool === this.toolName
+    /**
+     * Checks if server and tool name match this instance
+     */
+    isSameServerAndTool(server: string, tool: string): boolean {
+        return server === this.server && tool === this.toolName;
     }
 
-    static fromNotionCSV(row){
-        const KEY_SERVER_NAME = "server"
-        const KEY_TOOL_NAME = "tool"
-        const KEY_ARGUMENTS = "request_args"
+    /**
+     * Creates a PallasTool instance from CSV row data
+     */
+    static fromNotionCSV(row: Record<string, string>): PallasTool {
+        const KEY_SERVER_NAME = "server";
+        const KEY_TOOL_NAME = "tool";
+        const KEY_ARGUMENTS = "request_args";
 
         return new PallasTool({
             server: row[KEY_SERVER_NAME],
             toolName: row[KEY_TOOL_NAME],
             args: JSON.parse(row[KEY_ARGUMENTS])
-        })
+        });
     }
 }
 
-
-
-
-export { PallasTool }
+export { PallasService, PallasServiceBase, PallasTool };
