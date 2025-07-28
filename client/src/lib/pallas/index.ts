@@ -23,71 +23,38 @@ type ExtractMethods<T> = {
     [K in keyof T]: T[K] extends (...args: any[]) => any ? T[K] : never;
 };
 
-import { CSVLoader } from "./lib/csv"
 /**
  * Type helper to pick only the exposed methods from a class
  */
 type PickExposedMethods<T, K extends keyof T> = Pick<ExtractMethods<T>, K>;
 
 /**
- * Example TestCaseManager class demonstrating the expected interface
+ * Logger interface for dependency injection
  */
-export class TestCaseManager implements IMethodExposer {
-    static readonly exposesMethods = ['createTestCase', 'executeTest', 'validateResults', 'loadTestParameters', 'getTestCases'] as const;
+interface ILogger {
+    warn(message: string, context?: Record<string, any>): void;
+    error(message: string, context?: Record<string, any>): void;
+    info(message: string, context?: Record<string, any>): void;
+}
 
-    private testCases
-
-    async loadTestParameters() {
-
-
-        const data = await import("../../data/testCases.csv")
-        const us = data.default
-        this.testParameters = us
-
-
-        console.log(us)
-        console.log(this._generateMap(us))
-
-        this.testCases = this._generateMap(us)
-
+/**
+ * Default console logger implementation
+ */
+class ConsoleLogger implements ILogger {
+    warn(message: string, context?: Record<string, any>): void {
+        console.warn(message, context);
     }
 
-    getTestCases() {
-        return this.testCases
+    error(message: string, context?: Record<string, any>): void {
+        console.error(message, context);
     }
 
-    createTestCase(name: string, config: Record<string, any>): void {
-        console.log(`Creating test case: ${name}`, config);
-    }
-
-    executeTest(testId: string): Promise<boolean> {
-        console.log(`Executing test: ${testId}`);
-        return Promise.resolve(true);
-    }
-
-    validateResults(results: any[]): boolean {
-        console.log('Validating test results', results);
-        return results.length > 0;
-    }
-
-    // This method won't be exposed since it's not in exposesMethods
-    private internalMethod(): void {
-        console.log('Internal method - not exposed');
-    }
-
-    private _generateMap(toolCalls) {
-        const map = new Map()
-
-        for (const toolCall of toolCalls) {
-
-            const tool = PallasTool.fromNotionCSV(toolCall)
-            map.set(tool.name, tool)
-        }
-
-        return map
-
+    info(message: string, context?: Record<string, any>): void {
+        console.info(message, context);
     }
 }
+
+
 
 
 
@@ -368,122 +335,6 @@ export class PallasService extends PallasServiceBase {
 
 // Utility type to convert union to intersection
 type UnionToIntersection<U> = (U extends any ? (k: U) => void : never) extends (k: infer I) => void ? I : never;
-
-// Example usage with proper typing:
-/*
-// Method 1: Using declaration merging (recommended for complex scenarios)
-const pallasService = new PallasService();
-const testManager = new TestCaseManager();
-pallasService.registerChild(testManager);
-
-// Add this declaration merging in your code:
-declare module './PallasService' {
-  interface PallasService extends 
-    Pick<TestCaseManager, 'createTestCase' | 'executeTest' | 'validateResults'> {}
-}
-
-// Method 2: Using the withChild method
-const typedService = new PallasService()
-  .withChild(new TestCaseManager());
-
-// Method 3: Using the static create method
-/**
- * Interface for child classes that expose methods to PallasService
- */
-interface IMethodExposer {
-    /**
-     * Static property containing method names to expose to parent service
-     */
-    exposesMethods: string[];
-}
-
-/**
- * Interface for method conflict information
- */
-interface IMethodConflict {
-    methodName: string;
-    conflictingClasses: string[];
-}
-
-/**
- * Type helper to extract method signatures from a class
- */
-type ExtractMethods<T> = {
-    [K in keyof T]: T[K] extends (...args: any[]) => any ? T[K] : never;
-};
-
-import { CSVLoader } from "./lib/csv"
-/**
- * Type helper to pick only the exposed methods from a class
- */
-type PickExposedMethods<T, K extends keyof T> = Pick<ExtractMethods<T>, K>;
-
-/**
- * Example TestCaseManager class demonstrating the expected interface
- */
-export class TestCaseManager implements IMethodExposer {
-    static readonly exposesMethods = ['createTestCase', 'executeTest', 'validateResults', 'loadTestParameters', 'getTestCases'] as const;
-
-    private testCases
-
-    async loadTestParameters() {
-
-
-        const data = await import("../../data/testCases.csv")
-        const us = data.default
-        this.testParameters = us
-
-
-        console.log(us)
-        console.log(this._generateMap(us))
-
-        this.testCases = this._generateMap(us)
-
-    }
-
-    getTestCases() {
-        return this.testCases
-    }
-
-    createTestCase(name: string, config: Record<string, any>): void {
-        console.log(`Creating test case: ${name}`, config);
-    }
-
-    executeTest(testId: string): Promise<boolean> {
-        console.log(`Executing test: ${testId}`);
-        return Promise.resolve(true);
-    }
-
-    validateResults(results: any[]): boolean {
-        console.log('Validating test results', results);
-        return results.length > 0;
-    }
-
-    // This method won't be exposed since it's not in exposesMethods
-    private internalMethod(): void {
-        console.log('Internal method - not exposed');
-    }
-
-    private _generateMap(toolCalls) {
-        const map = new Map()
-
-        for (const toolCall of toolCalls) {
-
-            const tool = PallasTool.fromNotionCSV(toolCall)
-            map.set(tool.name, tool)
-        }
-
-        return map
-
-    }
-}
-const createdService = PallasService.create(new TestCaseManager());
-
-// All methods now have full IntelliSense and type safety:
-// typedService.createTestCase('test1', {}); // ✅ Fully typed
-// typedService.executeTest('test1');        // ✅ Fully typed
-*/
-
 
 class PallasTool {
 

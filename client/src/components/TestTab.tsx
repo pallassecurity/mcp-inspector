@@ -1,8 +1,14 @@
 import React, { useState, useCallback, useMemo, useEffect } from "react";
 import { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { MultiLevelSelector } from "./MultiLevelSelector";
-import { PallasService, TestCaseManager } from "../lib/pallas";
-const created = PallasService.create(new TestCaseManager())
+import { PallasService } from "../lib/pallas";
+import { BundlerCSVLoader, StaticBundlerCSVLoader } from "@/lib/pallas/lib/csv";
+import { TestCaseManager } from "@/lib/pallas/testManager";
+
+const csvLoader = new StaticBundlerCSVLoader()
+csvLoader.registerImport('../data/testCases.csv', () => import('../data/testCases.csv'));
+
+const created = PallasService.create(new TestCaseManager({csvLoader, "dataSource": "../data/testCases.csv"}))
 created.loadTestParameters()
 
 

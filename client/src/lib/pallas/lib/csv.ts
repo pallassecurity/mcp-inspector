@@ -21,15 +21,54 @@ interface ITestCaseRow {
 }
 
 /**
- * Bundler-based CSV loader for React/Webpack environments
+ * Bundler-based CSV loader for React/Webpack/Vite environments
  * Uses dynamic imports to load CSV files processed by bundler plugins
  */
 class BundlerCSVLoader implements CSVLoader {
     async loadCSV(source: string): Promise<ITestCaseRow[]> {
         try {
             // Dynamic import for bundler-processed CSV files
-            const data = await import(source);
+            // @vite-ignore - Suppress Vite dynamic import analysis warning
+            const data = await import(/* @vite-ignore */ source);
             // Handle both default exports and named exports
+            const csvData = data.default || data;
+            
+            if (!Array.isArray(csvData)) {
+                throw new Error(`Expected CSV data to be an array, got ${typeof csvData}`);
+            }
+            
+            return csvData;
+        } catch (error) {
+            throw new Error(`Failed to load CSV from bundler: ${error.message}`);
+        }
+    }
+}
+
+/**
+ * Static bundler CSV loader for Vite/Webpack environments
+ * Uses a predefined import map to avoid dynamic import issues
+ */
+class StaticBundlerCSVLoader implements CSVLoader {
+    private importMap: Map<string, () => Promise<any>> = new Map();
+
+    /**
+     * Register a static import for a CSV file
+     * @param source - The source path used as key
+     * @param importFn - Function that returns the import promise
+     */
+    registerImport(source: string, importFn: () => Promise<any>): void {
+        this.importMap.set(source, importFn);
+    }
+
+    async loadCSV(source: string): Promise<ITestCaseRow[]> {
+        const importFn = this.importMap.get(source);
+
+        if (!importFn) {
+            throw new Error(`No static import registered for source: ${source}. Use registerImport() first.`);
+        }
+
+        try {
+            const data = await importFn();
             const csvData = data.default || data;
 
             if (!Array.isArray(csvData)) {
@@ -38,10 +77,11 @@ class BundlerCSVLoader implements CSVLoader {
 
             return csvData;
         } catch (error) {
-            throw new Error(`Failed to load CSV from bundler: ${error.message}`);
+            throw new Error(`Failed to load CSV from static bundler import: ${error.message}`);
         }
     }
 }
+
 
 /**
  * File system CSV loader for Node.js/CLI environments
@@ -195,4 +235,4 @@ export class WebCSVLoader implements CSVLoader {
 
 
 export type { CSVLoader }
-export { FileSystemCSVLoader, BundlerCSVLoader }
+export { FileSystemCSVLoader, BundlerCSVLoader, StaticBundlerCSVLoader }

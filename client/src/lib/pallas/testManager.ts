@@ -13,7 +13,7 @@ interface ITestCaseManagerConfig {
  * Updated TestCaseManager with minimal changes and dependency injection
  * Drop-in replacement for your existing TestCaseManager
  */
-export class TestCaseManager implements IMethodExposer {
+class TestCaseManager implements IMethodExposer {
     static readonly exposesMethods = ['createTestCase', 'executeTest', 'validateResults', 'loadTestParameters', 'getTestCases'] as const;
 
     private testCases: Map<string, PallasTool> | undefined;
@@ -24,20 +24,13 @@ export class TestCaseManager implements IMethodExposer {
     constructor(config: ITestCaseManagerConfig = {}) {
         if (!config.csvLoader) throw Error("no config")
 
+        if (!config.dataSource) throw Error("no datasource")
+
         // Use injected dependencies or create defaults
         this.csvLoader = config.csvLoader
-        this.dataSource = config.dataSource || this.getDefaultDataSource();
+        this.dataSource = config.dataSource 
     }
 
-    /**
-     * Get default data source based on environment
-     */
-    private getDefaultDataSource(): string {
-        // In bundler environments, use relative import path
-        if (typeof __webpack_require__ !== 'undefined' || typeof import.meta !== 'undefined') {
-            return '../../data/testCases.csv';
-        }
-    }
 
     /**
      * Load test parameters - MINIMAL CHANGES from your original method
@@ -143,3 +136,5 @@ const testManagerWeb = new TestCaseManager({
     dataSource: 'https://example.com/test-cases.csv'
 });
 */
+
+export { TestCaseManager }
