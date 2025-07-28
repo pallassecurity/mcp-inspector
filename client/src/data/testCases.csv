@@ -1,7 +1,9 @@
 prompt,server,tool,request_args
-Find a page named Repeatable Prompt Submission,notion,API-post-search,"{""filter"":{""value"": ""page"", ""property"": ""object""}, ""query"":""Repeatable Prompt Submission""}"
-Create new page in MCP Server Forms called hello,notion,API-post-page,"{""parent"":{""page_id"": ""15075c3d-57b7-809c-ae7b-e52d49523e97""}, ""properties"":{""title"": [{""text"": {""content"": ""hello""}}]}}"
-get my last event in my calendar. only give me one result,GWorkspace,search_events_on_calendar,"{""params"":{""order_by"": ""startTime"", ""calendar_id"": ""primary"", ""max_results"": 1, ""single_events"": true}}"
-list my calendars I have access to,GWorkspace,list_calendars,{}
-what is dchen@pallassecurity.com available from 9am to noon today?,GWorkspace,calendar_query_freebusy,"{""time_min"": ""2025-07-23T09:00:00-07:00"", ""time_max"": ""2025-07-23T12:00:00-07:00"", ""items"": [{""id"": ""dchen@pallassecurity.com""}], ""time_zone"": ""America/Los_Angeles""}"
-is dchen@pallassecurity.com available from 9am to 5pm?,GWorkspace,calendar_query_freebusy,"{""time_min"": ""2025-07-23T09:00:00-07:00"", ""time_max"": ""2025-07-23T17:00:00-07:00"", ""items"": [{""id"": ""dchen@pallassecurity.com""}], ""time_zone"": ""America/Los_Angeles""}"
+what repositories do I have on github,github,search_repositories,"{""query"": ""user:dchen-pallas""}"
+what repositories do I have on github,github,get_me,"{""reason"": ""Getting user info to then search their repositories""}"
+go direct message David Chen and say hi,slack,slack_open_direct_message,"{""user_ids"": [""U08PQ6LMX3L""]}"
+go direct message David Chen and say hi,slack,slack_get_user_ids,"{""keywords"": [""David Chen""]}"
+list users in my Slack,slack,slack_get_users,{}
+Summarize the most recent update made in my notion instance,notion,API-post-search,"{""page_size"": 1, ""query"": """", ""sort"": {""direction"": ""descending"", ""timestamp"": ""last_edited_time""}}"
+get my last event in my calendar. only give me one result,calendar,search_events_on_calendar,"{""params"":{""order_by"": ""startTime"", ""calendar_id"": ""primary"", ""max_results"": 1, ""single_events"": true}}"
+list my calendars I have access to,calendar,list_calendars,{}

@@ -1,178 +1,198 @@
-//
-// This is file has been generated and not review
-//
-//
-
-interface CSVLoaderOptions {
-    delimiter?: string;
-    hasHeader?: boolean;
-    skipEmptyLines?: boolean;
-    trimWhitespace?: boolean;
-    encoding?: string;
+/**
+ * Abstract interface for CSV data loading
+ */
+interface CSVLoader {
+    /**
+     * Load CSV data and return parsed rows
+     * @param source - The source identifier (file path, import path, etc.)
+     * @returns Promise resolving to array of parsed CSV rows
+     */
+    loadCSV(source: string): Promise<any[]>;
 }
 
-interface CSVData {
-    headers?: string[];
-    rows: string[][];
-    data?: Record<string, string>[];
+/**
+ * Interface for test case data row structure
+ */
+interface ITestCaseRow {
+    server: string;
+    tool: string;
+    request_args: string;
+    [key: string]: any; // Allow additional columns
 }
 
-class CSVLoader {
-    private options: Required<CSVLoaderOptions>;
+/**
+ * Bundler-based CSV loader for React/Webpack environments
+ * Uses dynamic imports to load CSV files processed by bundler plugins
+ */
+class BundlerCSVLoader implements CSVLoader {
+    async loadCSV(source: string): Promise<ITestCaseRow[]> {
+        try {
+            // Dynamic import for bundler-processed CSV files
+            const data = await import(source);
+            // Handle both default exports and named exports
+            const csvData = data.default || data;
 
-    constructor(options: CSVLoaderOptions = {}) {
-        this.options = {
-            delimiter: options.delimiter || ',',
-            hasHeader: options.hasHeader ?? true,
-            skipEmptyLines: options.skipEmptyLines ?? true,
-            trimWhitespace: options.trimWhitespace ?? true,
-            encoding: options.encoding || 'utf-8'
-        };
-    }
-
-    /**
-     * Load CSV from file path (Node.js)
-     */
-    async loadFromFile(filePath: string): Promise<CSVData> {
-        const fs = await import('fs/promises');
-        const content = await fs.readFile(filePath, { encoding: this.options.encoding as BufferEncoding });
-        return this.parseCSV(content);
-    }
-
-    /**
-     * Load CSV from File object (Browser)
-     */
-    async loadFromFileObject(file: File): Promise<CSVData> {
-        const content = await file.text();
-        return this.parseCSV(content);
-    }
-
-    /**
-     * Load CSV from string content
-     */
-    loadFromString(content: string): CSVData {
-        return this.parseCSV(content);
-    }
-
-    /**
-     * Load CSV from URL
-     */
-    async loadFromURL(url: string): Promise<CSVData> {
-        const response = await fetch(url);
-        if (!response.ok) {
-            throw new Error(`Failed to fetch CSV: ${response.status} ${response.statusText}`);
-        }
-        const content = await response.text();
-        return this.parseCSV(content);
-    }
-
-    private parseCSV(content: string): CSVData {
-        const lines = content.split(/\r?\n/);
-        const rows: string[][] = [];
-
-        for (const line of lines) {
-            if (this.options.skipEmptyLines && line.trim() === '') {
-                continue;
+            if (!Array.isArray(csvData)) {
+                throw new Error(`Expected CSV data to be an array, got ${typeof csvData}`);
             }
 
-            const row = this.parseLine(line);
+            return csvData;
+        } catch (error) {
+            throw new Error(`Failed to load CSV from bundler: ${error.message}`);
+        }
+    }
+}
+
+/**
+ * File system CSV loader for Node.js/CLI environments
+ * Uses Node.js built-in fs module with simple CSV parsing
+ */
+class FileSystemCSVLoader implements CSVLoader {
+    async loadCSV(source: string): Promise<ITestCaseRow[]> {
+        // Only import fs when actually needed (Node.js environment)
+        const fs = await import('fs');
+
+        try {
+            const csvText = await fs.promises.readFile(source, 'utf-8');
+            return this.parseCSVText(csvText);
+        } catch (error) {
+            throw new Error(`Failed to read CSV file: ${error.message}`);
+        }
+    }
+
+    /**
+     * Simple CSV parser that handles basic CSV format
+     * Supports quoted fields and escaped quotes
+     */
+    private parseCSVText(csvText: string): ITestCaseRow[] {
+        const lines = csvText.trim().split('\n');
+        if (lines.length === 0) return [];
+
+        // Parse header row
+        const headers = this.parseCSVLine(lines[0]);
+        const rows: ITestCaseRow[] = [];
+
+        // Parse data rows
+        for (let i = 1; i < lines.length; i++) {
+            const values = this.parseCSVLine(lines[i]);
+            const row: any = {};
+
+            headers.forEach((header, index) => {
+                row[header] = values[index] || '';
+            });
+
             rows.push(row);
         }
 
-        if (rows.length === 0) {
-            return { rows: [] };
-        }
-
-        if (this.options.hasHeader && rows.length > 0) {
-            const headers = rows[0];
-            const dataRows = rows.slice(1);
-
-            // Convert to objects
-            const data = dataRows.map(row => {
-                const obj: Record<string, string> = {};
-                headers.forEach((header, index) => {
-                    obj[header] = row[index] || '';
-                });
-                return obj;
-            });
-
-            return {
-                headers,
-                rows: dataRows,
-                data
-            };
-        }
-
-        return { rows };
+        return rows;
     }
 
-    private parseLine(line: string): string[] {
+    /**
+     * Parse a single CSV line handling quoted fields
+     */
+    private parseCSVLine(line: string): string[] {
         const result: string[] = [];
         let current = '';
         let inQuotes = false;
-        let i = 0;
 
-        while (i < line.length) {
+        for (let i = 0; i < line.length; i++) {
             const char = line[i];
             const nextChar = line[i + 1];
 
-            if (char === '"') {
-                if (inQuotes && nextChar === '"') {
-                    // Escaped quote
-                    current += '"';
-                    i += 2;
-                } else {
-                    // Toggle quote state
-                    inQuotes = !inQuotes;
-                    i++;
-                }
-            } else if (char === this.options.delimiter && !inQuotes) {
+            if (char === '"' && inQuotes && nextChar === '"') {
+                // Escaped quote
+                current += '"';
+                i++; // Skip next quote
+            } else if (char === '"') {
+                // Toggle quote state
+                inQuotes = !inQuotes;
+            } else if (char === ',' && !inQuotes) {
                 // Field separator
-                result.push(this.options.trimWhitespace ? current.trim() : current);
+                result.push(current.trim());
                 current = '';
-                i++;
             } else {
+                // Regular character
                 current += char;
-                i++;
             }
         }
 
         // Add the last field
-        result.push(this.options.trimWhitespace ? current.trim() : current);
+        result.push(current.trim());
 
         return result;
     }
+}
 
-    /**
-     * Convert parsed data back to CSV string
-     */
-    static toCSV(data: CSVData, options: { delimiter?: string; includeHeaders?: boolean } = {}): string {
-        const delimiter = options.delimiter || ',';
-        const includeHeaders = options.includeHeaders ?? true;
+/**
+ * Web-based CSV loader using fetch API
+ * Useful for loading CSV files from URLs in browser environments
+ */
+export class WebCSVLoader implements CSVLoader {
+    async loadCSV(source: string): Promise<ITestCaseRow[]> {
+        try {
+            const response = await fetch(source);
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
 
-        const lines: string[] = [];
-
-        if (includeHeaders && data.headers) {
-            lines.push(data.headers.map(header => CSVLoader.escapeField(header, delimiter)).join(delimiter));
+            const csvText = await response.text();
+            return this.parseCSVText(csvText);
+        } catch (error) {
+            throw new Error(`Failed to load CSV from web: ${error.message}`);
         }
-
-        const rows = data.rows || [];
-        for (const row of rows) {
-            lines.push(row.map(field => CSVLoader.escapeField(field, delimiter)).join(delimiter));
-        }
-
-        return lines.join('\n');
     }
 
-    private static escapeField(field: string, delimiter: string): string {
-        // If field contains delimiter, quotes, or newlines, wrap in quotes
-        if (field.includes(delimiter) || field.includes('"') || field.includes('\n') || field.includes('\r')) {
-            return `"${field.replace(/"/g, '""')}"`;
+    /**
+     * Simple CSV parser - same as FileSystemCSVLoader
+     */
+    private parseCSVText(csvText: string): ITestCaseRow[] {
+        const lines = csvText.trim().split('\n');
+        if (lines.length === 0) return [];
+
+        const headers = this.parseCSVLine(lines[0]);
+        const rows: ITestCaseRow[] = [];
+
+        for (let i = 1; i < lines.length; i++) {
+            const values = this.parseCSVLine(lines[i]);
+            const row: any = {};
+
+            headers.forEach((header, index) => {
+                row[header] = values[index] || '';
+            });
+
+            rows.push(row);
         }
-        return field;
+
+        return rows;
+    }
+
+    private parseCSVLine(line: string): string[] {
+        const result: string[] = [];
+        let current = '';
+        let inQuotes = false;
+
+        for (let i = 0; i < line.length; i++) {
+            const char = line[i];
+            const nextChar = line[i + 1];
+
+            if (char === '"' && inQuotes && nextChar === '"') {
+                current += '"';
+                i++;
+            } else if (char === '"') {
+                inQuotes = !inQuotes;
+            } else if (char === ',' && !inQuotes) {
+                result.push(current.trim());
+                current = '';
+            } else {
+                current += char;
+            }
+        }
+
+        result.push(current.trim());
+        return result;
     }
 }
 
-// Usage examples:
-export type { CSVData, CSVLoaderOptions }
-export { CSVLoader };
+
+export type { CSVLoader }
+export { FileSystemCSVLoader, BundlerCSVLoader }
