@@ -19,6 +19,8 @@ import {
 } from "./client/index.js";
 import { handleError } from "./error-handler.js";
 import { createTransport, TransportOptions } from "./transport.js";
+import { TestCaseManager } from "./lib/pallas/testManager.js";
+import { FileSystemCSVLoader } from "./lib/pallas/lib/csv.js";
 
 type Args = {
   target: string[];
@@ -31,6 +33,15 @@ type Args = {
   toolArg?: Record<string, string>;
   transport?: "sse" | "stdio" | "http";
 };
+
+const csvLoader = new FileSystemCSVLoader()
+const manager = new TestCaseManager({
+  csvLoader,
+  dataSource: "./data/testCases.csv"
+})
+
+console.log('manager up')
+console.log(manager)
 
 function createTransportOptions(
   target: string[],
