@@ -14,6 +14,7 @@ interface Category {
 
 interface TestSelectorProps {
     categories: Category[];
+    enabledTests?: Record<string, Record<string, boolean>>; // categoryName -> testName -> enabled
     onRunTests: (selectedTests: SelectedTest[]) => Promise<void>;
 }
 
@@ -29,6 +30,88 @@ interface CategoryData {
 
 type SelectionData = Record<string, CategoryData>;
 type CategoryState = 'none' | 'partial' | 'all';
+
+// Pure utility functions (can be extracted to separate JS file)
+const createInitialData = (categories: Category[]): SelectionData => {
+    return categories.reduce((acc, category) => {
+        acc[category.name] = {
+            expanded: category.expanded || false,
+            items: category.items.reduce((itemAcc, item) => {
+                itemAcc[item.name] = item.selected || false;
+                return itemAcc;
+            }, {} as Record<string, boolean>)
+        };
+        return acc;
+    }, {} as SelectionData);
+};
+
+const getCategoryState = (items: Record<string, boolean>): CategoryState => {
+    const selectedCount = Object.values(items).filter(Boolean).length;
+    const totalCount = Object.values(items).length;
+
+    if (selectedCount === 0) return 'none';
+    if (selectedCount === totalCount) return 'all';
+    return 'partial';
+};
+
+const getTotalSelected = (data: SelectionData): number => {
+    return Object.values(data).reduce((total, categoryData) => {
+        return total + Object.values(categoryData.items).filter(Boolean).length;
+    }, 0);
+};
+
+const getSelectedTests = (data: SelectionData): SelectedTest[] => {
+    const selected: SelectedTest[] = [];
+    Object.entries(data).forEach(([categoryName, categoryData]) => {
+        Object.entries(categoryData.items).forEach(([testName, isSelected]) => {
+            if (isSelected) {
+                selected.push({ category: categoryName, test: testName });
+            }
+        });
+    });
+    return selected;
+};
+
+const getSelectedSummary = (data: SelectionData): string | null => {
+    const summary = Object.entries(data).map(([categoryName, categoryData]) => {
+        const selectedItems = Object.entries(categoryData.items)
+            .filter(([_, selected]) => selected)
+            .map(([item, _]) => item);
+
+        if (selectedItems.length === 0) return null;
+
+        const totalItems = Object.keys(categoryData.items).length;
+        if (selectedItems.length === totalItems) {
+            return `${categoryName} (All ${totalItems})`;
+        } else {
+            return `${categoryName} (${selectedItems.length}/${totalItems})`;
+        }
+    }).filter(Boolean);
+
+    return summary.length > 0 ? summary.join(', ') : null;
+};
+
+const filterItems = (items: Record<string, boolean>, searchTerm: string): Record<string, boolean> => {
+    if (!searchTerm) return items;
+
+    return Object.entries(items)
+        .filter(([itemName]) =>
+            itemName.toLowerCase().includes(searchTerm.toLowerCase())
+        )
+        .reduce((acc, [itemName, selected]) => ({
+            ...acc,
+            [itemName]: selected
+        }), {});
+};
+
+const isTestEnabled = (
+    enabledTests: Record<string, Record<string, boolean>> | undefined,
+    categoryName: string,
+    testName: string
+): boolean => {
+    if (!enabledTests) return false;
+    return enabledTests[categoryName]?.[testName] ?? false;
+};
 
 // Icons as SVG components
 const ChevronDown: React.FC<{ className?: string }> = ({ className = "" }) => (
@@ -71,35 +154,49 @@ const Clock: React.FC<{ className?: string }> = ({ className = "" }) => (
 const useSelection = (initialData: SelectionData) => {
     const [data, setData] = useState<SelectionData>(initialData);
 
-    // Add this effect:
     useEffect(() => {
         setData(initialData);
     }, [initialData]);
 
     const toggleCategory = useCallback((categoryName: string) => {
-        setData(prev => ({
-            ...prev,
-            [categoryName]: {
-                ...prev[categoryName],
-                expanded: !prev[categoryName].expanded
-            }
-        }));
-    }, []);
-
-    const selectCategory = useCallback((categoryName: string) => {
         setData(prev => {
             const items = prev[categoryName].items;
+            // Remove the enabled filter - allow selection of all items
             const selectedCount = Object.values(items).filter(Boolean).length;
             const totalCount = Object.values(items).length;
             const newValue = selectedCount !== totalCount;
+
 
             return {
                 ...prev,
                 [categoryName]: {
                     ...prev[categoryName],
-                    items: Object.keys(items).reduce((acc, item) => ({
+                    items: Object.entries(items).reduce((acc, [itemName]) => ({
                         ...acc,
-                        [item]: newValue
+                        [itemName]: newValue
+                    }), {})
+                }
+            };
+        });
+    }, []);
+
+    const selectCategory = useCallback((categoryName: string, enabledTests?: Record<string, Record<string, boolean>>) => {
+        setData(prev => {
+            const items = prev[categoryName].items;
+            const enabledItems = Object.entries(items).filter(([testName]) =>
+                isTestEnabled(enabledTests, categoryName, testName)
+            );
+            const selectedEnabledCount = enabledItems.filter(([_, selected]) => selected).length;
+            const totalEnabledCount = enabledItems.length;
+            const newValue = selectedEnabledCount !== totalEnabledCount;
+
+            return {
+                ...prev,
+                [categoryName]: {
+                    ...prev[categoryName],
+                    items: Object.entries(items).reduce((acc, [itemName, currentValue]) => ({
+                        ...acc,
+                        [itemName]: isTestEnabled(enabledTests, categoryName, itemName) ? newValue : currentValue
                     }), {})
                 }
             };
@@ -119,62 +216,11 @@ const useSelection = (initialData: SelectionData) => {
         }));
     }, []);
 
-    const getCategoryState = useCallback((categoryName: string): CategoryState => {
-        const items = data[categoryName].items;
-        const selectedCount = Object.values(items).filter(Boolean).length;
-        const totalCount = Object.values(items).length;
-
-        if (selectedCount === 0) return 'none';
-        if (selectedCount === totalCount) return 'all';
-        return 'partial';
-    }, [data]);
-
-    const getTotalSelected = useMemo(() => {
-        return Object.values(data).reduce((total, categoryData) => {
-            return total + Object.values(categoryData.items).filter(Boolean).length;
-        }, 0);
-    }, [data]);
-
-    const getSelectedTests = useMemo((): SelectedTest[] => {
-        const selected: SelectedTest[] = [];
-        Object.entries(data).forEach(([categoryName, categoryData]) => {
-            Object.entries(categoryData.items).forEach(([testName, isSelected]) => {
-                if (isSelected) {
-                    selected.push({ category: categoryName, test: testName });
-                }
-            });
-        });
-        return selected;
-    }, [data]);
-
-    const getSelectedSummary = useMemo(() => {
-        const summary = Object.entries(data).map(([categoryName, categoryData]) => {
-            const selectedItems = Object.entries(categoryData.items)
-                .filter(([_, selected]) => selected)
-                .map(([item, _]) => item);
-
-            if (selectedItems.length === 0) return null;
-
-            const totalItems = Object.keys(categoryData.items).length;
-            if (selectedItems.length === totalItems) {
-                return `${categoryName} (All ${totalItems})`;
-            } else {
-                return `${categoryName} (${selectedItems.length}/${totalItems})`;
-            }
-        }).filter(Boolean);
-
-        return summary.length > 0 ? summary.join(', ') : null;
-    }, [data]);
-
     return {
         data,
         toggleCategory,
         selectCategory,
-        selectItem,
-        getCategoryState,
-        getTotalSelected,
-        getSelectedTests,
-        getSelectedSummary
+        selectItem
     };
 };
 
@@ -189,22 +235,7 @@ const useSearch = () => {
         }));
     }, []);
 
-    const getFilteredItems = useCallback((categoryName: string, items: Record<string, boolean>) => {
-        const searchTerm = searchTerms[categoryName] || '';
-
-        if (!searchTerm) return items;
-
-        return Object.entries(items)
-            .filter(([itemName]) =>
-                itemName.toLowerCase().includes(searchTerm.toLowerCase())
-            )
-            .reduce((acc, [itemName, selected]) => ({
-                ...acc,
-                [itemName]: selected
-            }), {});
-    }, [searchTerms]);
-
-    return { searchTerms, updateSearch, getFilteredItems };
+    return { searchTerms, updateSearch };
 };
 
 // Search component
@@ -240,10 +271,11 @@ const SearchBar: React.FC<SearchBarProps> = ({ categoryName, totalItems, searchT
 interface ItemListProps {
     items: Record<string, boolean>;
     categoryName: string;
+    enabledTests?: Record<string, Record<string, boolean>>;
     onItemSelect: (categoryName: string, itemName: string) => void;
 }
 
-const ItemList: React.FC<ItemListProps> = ({ items, categoryName, onItemSelect }) => {
+const ItemList: React.FC<ItemListProps> = ({ items, categoryName, enabledTests, onItemSelect }) => {
     if (Object.keys(items).length === 0) {
         return (
             <div className="p-4 text-center text-gray-500">
@@ -255,20 +287,30 @@ const ItemList: React.FC<ItemListProps> = ({ items, categoryName, onItemSelect }
     return (
         <div className="p-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                {Object.entries(items).map(([testName, selected]) => (
-                    <label
-                        key={testName}
-                        className="flex items-center space-x-2 cursor-pointer p-2 hover:bg-gray-50 rounded text-sm border-l-2 border-transparent hover:border-blue-300"
-                    >
-                        <input
-                            type="checkbox"
-                            checked={selected}
-                            onChange={() => onItemSelect(categoryName, testName)}
-                            className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 flex-shrink-0"
-                        />
-                        <span className="text-gray-700 truncate">{testName}</span>
-                    </label>
-                ))}
+                {Object.entries(items).map(([testName, selected]) => {
+                    const enabled = isTestEnabled(enabledTests, categoryName, testName);
+
+                    return (
+                        <label
+                            key={testName}
+                            className={`flex items-center space-x-2 p-2 rounded text-sm border-l-2 border-transparent ${enabled
+                                ? 'cursor-pointer hover:bg-gray-50 hover:border-blue-300'
+                                : 'cursor-not-allowed opacity-50 bg-gray-25'
+                                }`}
+                        >
+                            <input
+                                type="checkbox"
+                                checked={selected}
+                                disabled={!enabled}
+                                onChange={() => enabled && onItemSelect(categoryName, testName)}
+                                className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 flex-shrink-0 disabled:opacity-50"
+                            />
+                            <span className={`truncate ${enabled ? 'text-gray-700' : 'text-gray-400'}`}>
+                                {testName}
+                            </span>
+                        </label>
+                    );
+                })}
             </div>
         </div>
     );
@@ -281,6 +323,7 @@ interface CategoryHeaderProps {
     isExpanded: boolean;
     selectedCount: number;
     totalCount: number;
+    enabledCount: number;
     onToggle: () => void;
     onSelect: () => void;
 }
@@ -291,6 +334,7 @@ const CategoryHeader: React.FC<CategoryHeaderProps> = ({
     isExpanded,
     selectedCount,
     totalCount,
+    enabledCount,
     onToggle,
     onSelect
 }) => (
@@ -321,9 +365,14 @@ const CategoryHeader: React.FC<CategoryHeaderProps> = ({
             </label>
         </div>
 
-        <span className="text-sm text-gray-500">
-            {selectedCount} / {totalCount} selected
-        </span>
+        <div className="text-sm text-gray-500">
+            <span>{selectedCount} / {totalCount} selected</span>
+            {enabledCount < totalCount && (
+                <span className="ml-2 text-xs text-amber-600">
+                    ({enabledCount} enabled)
+                </span>
+            )}
+        </div>
     </div>
 );
 
@@ -334,6 +383,7 @@ interface CategorySectionProps {
     categoryState: CategoryState;
     searchTerm: string;
     filteredItems: Record<string, boolean>;
+    enabledTests?: Record<string, Record<string, boolean>>;
     onToggle: (categoryName: string) => void;
     onSelect: (categoryName: string) => void;
     onItemSelect: (categoryName: string, itemName: string) => void;
@@ -346,44 +396,55 @@ const CategorySection: React.FC<CategorySectionProps> = ({
     categoryState,
     searchTerm,
     filteredItems,
+    enabledTests,
     onToggle,
     onSelect,
     onItemSelect,
     onSearchChange
-}) => (
-    <div className="border rounded-lg overflow-hidden">
-        <CategoryHeader
-            categoryName={categoryName}
-            categoryState={categoryState}
-            isExpanded={categoryData.expanded}
-            selectedCount={Object.values(categoryData.items).filter(Boolean).length}
-            totalCount={Object.keys(categoryData.items).length}
-            onToggle={() => onToggle(categoryName)}
-            onSelect={() => onSelect(categoryName)}
-        />
+}) => {
+    const enabledCount = useMemo(() => {
+        return Object.keys(categoryData.items).filter(testName =>
+            isTestEnabled(enabledTests, categoryName, testName)
+        ).length;
+    }, [categoryData.items, enabledTests, categoryName]);
 
-        {categoryData.expanded && (
-            <div className="bg-white border-t">
-                <div className="p-4 border-b bg-gray-25">
-                    <SearchBar
-                        categoryName={categoryName}
-                        totalItems={Object.keys(categoryData.items).length}
-                        searchTerm={searchTerm}
-                        onSearchChange={(term) => onSearchChange(categoryName, term)}
-                    />
-                </div>
+    return (
+        <div className="border rounded-lg overflow-hidden">
+            <CategoryHeader
+                categoryName={categoryName}
+                categoryState={categoryState}
+                isExpanded={categoryData.expanded}
+                selectedCount={Object.values(categoryData.items).filter(Boolean).length}
+                totalCount={Object.keys(categoryData.items).length}
+                enabledCount={enabledCount}
+                onToggle={() => onToggle(categoryName)}
+                onSelect={() => onSelect(categoryName)}
+            />
 
-                <div className="max-h-64 overflow-y-auto">
-                    <ItemList
-                        items={filteredItems}
-                        categoryName={categoryName}
-                        onItemSelect={onItemSelect}
-                    />
+            {categoryData.expanded && (
+                <div className="bg-white border-t">
+                    <div className="p-4 border-b bg-gray-25">
+                        <SearchBar
+                            categoryName={categoryName}
+                            totalItems={Object.keys(categoryData.items).length}
+                            searchTerm={searchTerm}
+                            onSearchChange={(term) => onSearchChange(categoryName, term)}
+                        />
+                    </div>
+
+                    <div className="max-h-64 overflow-y-auto">
+                        <ItemList
+                            items={filteredItems}
+                            categoryName={categoryName}
+                            enabledTests={enabledTests}
+                            onItemSelect={onItemSelect}
+                        />
+                    </div>
                 </div>
-            </div>
-        )}
-    </div>
-);
+            )}
+        </div>
+    );
+};
 
 // Summary component
 interface SelectionSummaryProps {
@@ -436,44 +497,42 @@ const SelectionSummary: React.FC<SelectionSummaryProps> = ({ totalSelected, sele
 );
 
 // Main component
-const MultiLevelSelector: React.FC<TestSelectorProps> = ({ categories, onRunTests }) => {
+const MultiLevelSelector: React.FC<TestSelectorProps> = ({ categories, enabledTests, onRunTests }) => {
     const [isRunning, setIsRunning] = useState(false);
 
     // Transform categories prop to internal data structure
-    const initialData = useMemo((): SelectionData => {
-        return categories.reduce((acc, category) => {
-            acc[category.name] = {
-                expanded: category.expanded || false,
-                items: category.items.reduce((itemAcc, item) => {
-                    itemAcc[item.name] = item.selected || false;
-                    return itemAcc;
-                }, {} as Record<string, boolean>)
-            };
-            return acc;
-        }, {} as SelectionData);
-    }, [categories]);
+    const initialData = useMemo(() => createInitialData(categories), [categories]);
 
     const selection = useSelection(initialData);
     const search = useSearch();
 
+    // Computed values using pure functions
+    const totalSelected = useMemo(() => getTotalSelected(selection.data), [selection.data]);
+    const selectedTests = useMemo(() => getSelectedTests(selection.data), [selection.data]);
+    const selectedSummary = useMemo(() => getSelectedSummary(selection.data), [selection.data]);
+
     const handleRunTests = useCallback(async () => {
-        if (selection.getTotalSelected === 0) return;
+        if (totalSelected === 0) return;
 
         setIsRunning(true);
         try {
-            await onRunTests(selection.getSelectedTests);
+            await onRunTests(selectedTests);
         } finally {
             setIsRunning(false);
         }
-    }, [selection.getTotalSelected, selection.getSelectedTests, onRunTests]);
+    }, [totalSelected, selectedTests, onRunTests]);
+
+    const handleSelectCategory = useCallback((categoryName: string) => {
+        selection.selectCategory(categoryName, enabledTests);
+    }, [selection.selectCategory, enabledTests]);
 
     return (
         <div className="max-w-4xl mx-auto p-6 bg-white">
             <div className="mb-6">
                 <h2 className="text-2xl font-bold mb-4">Test Suite Selection</h2>
                 <SelectionSummary
-                    totalSelected={selection.getTotalSelected}
-                    selectedSummary={selection.getSelectedSummary}
+                    totalSelected={totalSelected}
+                    selectedSummary={selectedSummary}
                     onRun={handleRunTests}
                     isRunning={isRunning}
                 />
@@ -481,8 +540,8 @@ const MultiLevelSelector: React.FC<TestSelectorProps> = ({ categories, onRunTest
 
             <div className="space-y-2">
                 {Object.entries(selection.data).map(([categoryName, categoryData]) => {
-                    const categoryState = selection.getCategoryState(categoryName);
-                    const filteredItems = search.getFilteredItems(categoryName, categoryData.items);
+                    const categoryState = getCategoryState(categoryData.items);
+                    const filteredItems = filterItems(categoryData.items, search.searchTerms[categoryName] || '');
 
                     return (
                         <CategorySection
@@ -492,8 +551,9 @@ const MultiLevelSelector: React.FC<TestSelectorProps> = ({ categories, onRunTest
                             categoryState={categoryState}
                             searchTerm={search.searchTerms[categoryName] || ''}
                             filteredItems={filteredItems}
+                            enabledTests={enabledTests}
                             onToggle={selection.toggleCategory}
-                            onSelect={selection.selectCategory}
+                            onSelect={handleSelectCategory}
                             onItemSelect={selection.selectItem}
                             onSearchChange={search.updateSearch}
                         />
@@ -504,4 +564,4 @@ const MultiLevelSelector: React.FC<TestSelectorProps> = ({ categories, onRunTest
     );
 };
 
-export { MultiLevelSelector };
+export { MultiLevelSelector, type TestSelectorProps, type Category, type TestItem, type SelectedTest };
