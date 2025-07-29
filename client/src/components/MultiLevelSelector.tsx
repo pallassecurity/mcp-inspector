@@ -1,3 +1,4 @@
+import { PallasTool } from '@/lib/pallas';
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 
 interface TestItem {
@@ -9,13 +10,6 @@ interface Category {
     name: string;
     expanded?: boolean;
     items: TestItem[];
-}
-
-interface PallasTool {
-    name: string;
-    arguments: any;
-    isSameTool(fullString: string): boolean;
-    isSameServerAndTool(server: string, tool: string): boolean;
 }
 
 interface TestSelectorProps {
@@ -37,7 +31,6 @@ interface CategoryData {
 type SelectionData = Record<string, CategoryData>;
 type CategoryState = 'none' | 'partial' | 'all';
 
-export type { TestSelectorProps, Category, TestItem, SelectedTest };
 
 const createInitialData = (categories: Category[]): SelectionData => {
     return categories.reduce((acc, category) => {
@@ -621,4 +614,6 @@ const MultiLevelSelector: React.FC<TestSelectorProps> = ({ categories, enabledTe
     );
 };
 
+
+export type { TestSelectorProps, Category, TestItem, SelectedTest };
 export { MultiLevelSelector };
