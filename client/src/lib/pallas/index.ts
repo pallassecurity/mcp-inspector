@@ -341,6 +341,15 @@ class PallasTool {
         return server === this.server && tool === this.toolName;
     }
 
+
+    getToStorage(){
+
+        return {
+            name: this.fullName,
+            args: this.arguments
+        }
+    }
+
     /**
      * Creates a PallasTool instance from CSV row data
      */

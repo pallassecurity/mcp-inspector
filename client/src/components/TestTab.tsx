@@ -5,6 +5,7 @@ import { TestCaseManager } from "@/lib/pallas/testManager";
 import { PallasService } from "@/lib/pallas";
 import { useEffect, useState } from "react";
 import { Tool } from "@/lib/pallas-sdk";
+import { LocalStorage, Storage } from "@/lib/pallas/lib/storage";
 
 const csvLoader = new StaticBundlerCSVLoader();
 csvLoader.registerImport(
@@ -16,10 +17,47 @@ const created = PallasService.create(
   new TestCaseManager({ csvLoader, dataSource: "../data/testCases.csv" }),
 );
 created.loadTestParameters();
+class StorageManager {
+  private STORAGE_KEY = "remember";
+  private historyTests = [];
+  private STORAGE_LIMIT = 3;
+  constructor(private storage: Storage) {}
 
+  async loadSaved() {
+    const saved = this.storage.getItem(this.STORAGE_KEY);
+
+    const parsed = JSON.parse(saved);
+    this.historyTests = parsed;
+    console.log(parsed);
+  }
+
+  private formatSelectedForStorage(map) {
+    const data = [];
+    for (const [fullName, pallasTool] of map.entries()) {
+      const out = pallasTool.getToStorage();
+
+      data.push(out);
+    }
+
+    return data;
+  }
+
+  async storeLastTests(map) {
+    this.historyTests.push(this.formatSelectedForStorage(map));
+
+    if (this.historyTests.length > this.STORAGE_LIMIT) {
+      this.historyTests.shift();
+    }
+
+    this.storage.setItem(this.STORAGE_KEY, JSON.stringify(this.historyTests));
+  }
+}
+
+const storage = new LocalStorage();
+const manager = new StorageManager(storage);
+await manager.loadSaved();
 interface TestTabProps {
   tools: Tool[];
-  onCallTool: (toolName: string, args: any) => Promise<any>;
   callTool: (toolName: string, args) => Promise<any>;
   isConnected: boolean;
 }
@@ -50,6 +88,8 @@ const TestTab = ({ tools, callTool }: TestTabProps) => {
 
               callTool(name, tool.arguments);
             }
+
+            manager.storeLastTests(filter);
           }}
         />
       )}
