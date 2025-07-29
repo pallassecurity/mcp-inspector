@@ -1,6 +1,6 @@
+import { PallasTool } from '@/lib/pallas';
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 
-// Types
 interface TestItem {
     name: string;
     selected?: boolean;
@@ -14,7 +14,7 @@ interface Category {
 
 interface TestSelectorProps {
     categories: Category[];
-    enabledTests?: Record<string, Record<string, boolean>>; // categoryName -> testName -> enabled
+    enabledTests?: Map<string, PallasTool>;
     onRunTests: (selectedTests: SelectedTest[]) => Promise<void>;
 }
 
@@ -31,7 +31,7 @@ interface CategoryData {
 type SelectionData = Record<string, CategoryData>;
 type CategoryState = 'none' | 'partial' | 'all';
 
-// Pure utility functions (can be extracted to separate JS file)
+
 const createInitialData = (categories: Category[]): SelectionData => {
     return categories.reduce((acc, category) => {
         acc[category.name] = {
@@ -104,16 +104,26 @@ const filterItems = (items: Record<string, boolean>, searchTerm: string): Record
         }), {});
 };
 
-const isTestEnabled = (
-    enabledTests: Record<string, Record<string, boolean>> | undefined,
-    categoryName: string,
-    testName: string
-): boolean => {
+const isTestEnabled = (enabledTests: Map<string, PallasTool> | undefined, categoryName: string, testName: string): boolean => {
     if (!enabledTests) return false;
-    return enabledTests[categoryName]?.[testName] ?? false;
+    
+    // Check direct match first
+    if (enabledTests.has(testName)) return true;
+    
+    // Check if testName matches the format server-toolName
+    const toolKey = `${categoryName}-${testName}`;
+    if (enabledTests.has(toolKey)) return true;
+    
+    // Check if any tool in the map matches this test
+    for (const [key, tool] of enabledTests) {
+        if (tool.isSameTool(testName) || tool.isSameTool(toolKey)) {
+            return true;
+        }
+    }
+    
+    return false;
 };
 
-// Icons as SVG components
 const ChevronDown: React.FC<{ className?: string }> = ({ className = "" }) => (
     <svg className={className} fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
@@ -150,7 +160,9 @@ const Clock: React.FC<{ className?: string }> = ({ className = "" }) => (
     </svg>
 );
 
-// Custom hook for managing selection state
+/**
+ * Custom hook for managing test selection state across categories
+ */
 const useSelection = (initialData: SelectionData) => {
     const [data, setData] = useState<SelectionData>(initialData);
 
@@ -159,28 +171,16 @@ const useSelection = (initialData: SelectionData) => {
     }, [initialData]);
 
     const toggleCategory = useCallback((categoryName: string) => {
-        setData(prev => {
-            const items = prev[categoryName].items;
-            // Remove the enabled filter - allow selection of all items
-            const selectedCount = Object.values(items).filter(Boolean).length;
-            const totalCount = Object.values(items).length;
-            const newValue = selectedCount !== totalCount;
-
-
-            return {
-                ...prev,
-                [categoryName]: {
-                    ...prev[categoryName],
-                    items: Object.entries(items).reduce((acc, [itemName]) => ({
-                        ...acc,
-                        [itemName]: newValue
-                    }), {})
-                }
-            };
-        });
+        setData(prev => ({
+            ...prev,
+            [categoryName]: {
+                ...prev[categoryName],
+                expanded: !prev[categoryName].expanded
+            }
+        }));
     }, []);
 
-    const selectCategory = useCallback((categoryName: string, enabledTests?: Record<string, Record<string, boolean>>) => {
+    const selectCategory = useCallback((categoryName: string, enabledTests?: Map<string, PallasTool>) => {
         setData(prev => {
             const items = prev[categoryName].items;
             const enabledItems = Object.entries(items).filter(([testName]) =>
@@ -224,7 +224,6 @@ const useSelection = (initialData: SelectionData) => {
     };
 };
 
-// Hook for search functionality
 const useSearch = () => {
     const [searchTerms, setSearchTerms] = useState<Record<string, string>>({});
 
@@ -238,7 +237,6 @@ const useSearch = () => {
     return { searchTerms, updateSearch };
 };
 
-// Search component
 interface SearchBarProps {
     categoryName: string;
     totalItems: number;
@@ -267,11 +265,10 @@ const SearchBar: React.FC<SearchBarProps> = ({ categoryName, totalItems, searchT
     </div>
 );
 
-// Item list component
 interface ItemListProps {
     items: Record<string, boolean>;
     categoryName: string;
-    enabledTests?: Record<string, Record<string, boolean>>;
+    enabledTests?: Map<string, PallasTool>;
     onItemSelect: (categoryName: string, itemName: string) => void;
 }
 
@@ -316,7 +313,6 @@ const ItemList: React.FC<ItemListProps> = ({ items, categoryName, enabledTests, 
     );
 };
 
-// Category header component
 interface CategoryHeaderProps {
     categoryName: string;
     categoryState: CategoryState;
@@ -376,14 +372,13 @@ const CategoryHeader: React.FC<CategoryHeaderProps> = ({
     </div>
 );
 
-// Main category component
 interface CategorySectionProps {
     categoryName: string;
     categoryData: CategoryData;
     categoryState: CategoryState;
     searchTerm: string;
     filteredItems: Record<string, boolean>;
-    enabledTests?: Record<string, Record<string, boolean>>;
+    enabledTests?: Map<string, PallasTool>;
     onToggle: (categoryName: string) => void;
     onSelect: (categoryName: string) => void;
     onItemSelect: (categoryName: string, itemName: string) => void;
@@ -446,7 +441,6 @@ const CategorySection: React.FC<CategorySectionProps> = ({
     );
 };
 
-// Summary component
 interface SelectionSummaryProps {
     totalSelected: number;
     selectedSummary: string | null;
@@ -496,17 +490,18 @@ const SelectionSummary: React.FC<SelectionSummaryProps> = ({ totalSelected, sele
     </div>
 );
 
-// Main component
+/**
+ * MultiLevelSelector - A comprehensive test selection interface
+ * Manages hierarchical test categories with search, filtering, and batch operations
+ */
 const MultiLevelSelector: React.FC<TestSelectorProps> = ({ categories, enabledTests, onRunTests }) => {
     const [isRunning, setIsRunning] = useState(false);
 
-    // Transform categories prop to internal data structure
     const initialData = useMemo(() => createInitialData(categories), [categories]);
 
     const selection = useSelection(initialData);
     const search = useSearch();
 
-    // Computed values using pure functions
     const totalSelected = useMemo(() => getTotalSelected(selection.data), [selection.data]);
     const selectedTests = useMemo(() => getSelectedTests(selection.data), [selection.data]);
     const selectedSummary = useMemo(() => getSelectedSummary(selection.data), [selection.data]);
@@ -564,4 +559,6 @@ const MultiLevelSelector: React.FC<TestSelectorProps> = ({ categories, enabledTe
     );
 };
 
-export { MultiLevelSelector, type TestSelectorProps, type Category, type TestItem, type SelectedTest };
+
+export type { TestSelectorProps, Category, TestItem, SelectedTest };
+export { MultiLevelSelector };

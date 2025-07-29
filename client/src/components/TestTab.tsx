@@ -273,6 +273,8 @@ const TestTab: React.FC<TestTabProps> = ({
           <p>hi</p>
           {myCategories && <MultiLevelSelector
             categories={myCategories}
+          
+            enabledTests={created.getTestCases()}
             onRunTests={async (data) => {
 
                 console.log(data)
