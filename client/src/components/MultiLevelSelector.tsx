@@ -1,4 +1,3 @@
-import { PallasTool } from '@/lib/pallas';
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 
 interface TestItem {
@@ -10,6 +9,13 @@ interface Category {
     name: string;
     expanded?: boolean;
     items: TestItem[];
+}
+
+interface PallasTool {
+    name: string;
+    arguments: any;
+    isSameTool(fullString: string): boolean;
+    isSameServerAndTool(server: string, tool: string): boolean;
 }
 
 interface TestSelectorProps {
@@ -31,6 +37,7 @@ interface CategoryData {
 type SelectionData = Record<string, CategoryData>;
 type CategoryState = 'none' | 'partial' | 'all';
 
+export type { TestSelectorProps, Category, TestItem, SelectedTest };
 
 const createInitialData = (categories: Category[]): SelectionData => {
     return categories.reduce((acc, category) => {
@@ -45,12 +52,19 @@ const createInitialData = (categories: Category[]): SelectionData => {
     }, {} as SelectionData);
 };
 
-const getCategoryState = (items: Record<string, boolean>): CategoryState => {
-    const selectedCount = Object.values(items).filter(Boolean).length;
-    const totalCount = Object.values(items).length;
-
-    if (selectedCount === 0) return 'none';
-    if (selectedCount === totalCount) return 'all';
+const getCategoryState = (items: Record<string, boolean>, enabledTests: Map<string, PallasTool> | undefined, categoryName: string): CategoryState => {
+    if (!enabledTests) return 'none';
+    
+    const enabledItems = Object.keys(items).filter(testName => 
+        isTestEnabled(enabledTests, categoryName, testName)
+    );
+    
+    if (enabledItems.length === 0) return 'none';
+    
+    const selectedEnabledCount = enabledItems.filter(testName => items[testName]).length;
+    
+    if (selectedEnabledCount === 0) return 'none';
+    if (selectedEnabledCount === enabledItems.length) return 'all';
     return 'partial';
 };
 
@@ -60,11 +74,11 @@ const getTotalSelected = (data: SelectionData): number => {
     }, 0);
 };
 
-const getSelectedTests = (data: SelectionData): SelectedTest[] => {
+const getSelectedTests = (data: SelectionData, enabledTests?: Map<string, PallasTool>): SelectedTest[] => {
     const selected: SelectedTest[] = [];
     Object.entries(data).forEach(([categoryName, categoryData]) => {
         Object.entries(categoryData.items).forEach(([testName, isSelected]) => {
-            if (isSelected) {
+            if (isSelected && isTestEnabled(enabledTests, categoryName, testName)) {
                 selected.push({ category: categoryName, test: testName });
             }
         });
@@ -72,19 +86,44 @@ const getSelectedTests = (data: SelectionData): SelectedTest[] => {
     return selected;
 };
 
-const getSelectedSummary = (data: SelectionData): string | null => {
+const formatSelectedTestsForStorage = (selectedTests: SelectedTest[], enabledTests?: Map<string, PallasTool>) => {
+    const formattedTests = selectedTests.map(({ category, test }) => {
+        const toolKey = `${category}-${test}`;
+        const tool = enabledTests?.get(test) || enabledTests?.get(toolKey) || 
+                   Array.from(enabledTests?.values() || []).find(t => t.isSameTool(test) || t.isSameTool(toolKey));
+        
+        return {
+            category,
+            testName: test,
+            server: category,
+            toolName: test,
+            args: tool?.arguments || {},
+            fullToolName: tool?.name || toolKey,
+            timestamp: new Date().toISOString()
+        };
+    });
+
+    return {
+        executionId: `exec-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        timestamp: new Date().toISOString(),
+        totalTests: formattedTests.length,
+        tests: formattedTests
+    };
+};
+const getSelectedSummary = (data: SelectionData, enabledTests?: Map<string, PallasTool>): string | null => {
     const summary = Object.entries(data).map(([categoryName, categoryData]) => {
-        const selectedItems = Object.entries(categoryData.items)
-            .filter(([_, selected]) => selected)
-            .map(([item, _]) => item);
+        const enabledItems = Object.keys(categoryData.items).filter(testName =>
+            isTestEnabled(enabledTests, categoryName, testName)
+        );
+        const selectedEnabledItems = enabledItems.filter(testName => categoryData.items[testName]);
 
-        if (selectedItems.length === 0) return null;
+        if (selectedEnabledItems.length === 0) return null;
 
-        const totalItems = Object.keys(categoryData.items).length;
-        if (selectedItems.length === totalItems) {
-            return `${categoryName} (All ${totalItems})`;
+        const totalEnabled = enabledItems.length;
+        if (selectedEnabledItems.length === totalEnabled) {
+            return `${categoryName} (All ${totalEnabled})`;
         } else {
-            return `${categoryName} (${selectedItems.length}/${totalItems})`;
+            return `${categoryName} (${selectedEnabledItems.length}/${totalEnabled})`;
         }
     }).filter(Boolean);
 
@@ -183,10 +222,10 @@ const useSelection = (initialData: SelectionData) => {
     const selectCategory = useCallback((categoryName: string, enabledTests?: Map<string, PallasTool>) => {
         setData(prev => {
             const items = prev[categoryName].items;
-            const enabledItems = Object.entries(items).filter(([testName]) =>
+            const enabledItems = Object.keys(items).filter(testName =>
                 isTestEnabled(enabledTests, categoryName, testName)
             );
-            const selectedEnabledCount = enabledItems.filter(([_, selected]) => selected).length;
+            const selectedEnabledCount = enabledItems.filter(testName => items[testName]).length;
             const totalEnabledCount = enabledItems.length;
             const newValue = selectedEnabledCount !== totalEnabledCount;
 
@@ -318,8 +357,8 @@ interface CategoryHeaderProps {
     categoryState: CategoryState;
     isExpanded: boolean;
     selectedCount: number;
-    totalCount: number;
     enabledCount: number;
+    disabledCount: number;
     onToggle: () => void;
     onSelect: () => void;
 }
@@ -329,8 +368,8 @@ const CategoryHeader: React.FC<CategoryHeaderProps> = ({
     categoryState,
     isExpanded,
     selectedCount,
-    totalCount,
     enabledCount,
+    disabledCount,
     onToggle,
     onSelect
 }) => (
@@ -362,10 +401,10 @@ const CategoryHeader: React.FC<CategoryHeaderProps> = ({
         </div>
 
         <div className="text-sm text-gray-500">
-            <span>{selectedCount} / {totalCount} selected</span>
-            {enabledCount < totalCount && (
-                <span className="ml-2 text-xs text-amber-600">
-                    ({enabledCount} enabled)
+            <span>{selectedCount} / {enabledCount} selected</span>
+            {disabledCount > 0 && (
+                <span className="ml-2 text-xs text-gray-400">
+                    ({disabledCount} disabled)
                 </span>
             )}
         </div>
@@ -403,15 +442,26 @@ const CategorySection: React.FC<CategorySectionProps> = ({
         ).length;
     }, [categoryData.items, enabledTests, categoryName]);
 
+    const selectedEnabledCount = useMemo(() => {
+        const enabledItems = Object.keys(categoryData.items).filter(testName =>
+            isTestEnabled(enabledTests, categoryName, testName)
+        );
+        return enabledItems.filter(testName => categoryData.items[testName]).length;
+    }, [categoryData.items, enabledTests, categoryName]);
+
+    const disabledCount = useMemo(() => {
+        return Object.keys(categoryData.items).length - enabledCount;
+    }, [categoryData.items, enabledCount]);
+
     return (
         <div className="border rounded-lg overflow-hidden">
             <CategoryHeader
                 categoryName={categoryName}
                 categoryState={categoryState}
                 isExpanded={categoryData.expanded}
-                selectedCount={Object.values(categoryData.items).filter(Boolean).length}
-                totalCount={Object.keys(categoryData.items).length}
+                selectedCount={selectedEnabledCount}
                 enabledCount={enabledCount}
+                disabledCount={disabledCount}
                 onToggle={() => onToggle(categoryName)}
                 onSelect={() => onSelect(categoryName)}
             />
@@ -502,12 +552,24 @@ const MultiLevelSelector: React.FC<TestSelectorProps> = ({ categories, enabledTe
     const selection = useSelection(initialData);
     const search = useSearch();
 
-    const totalSelected = useMemo(() => getTotalSelected(selection.data), [selection.data]);
-    const selectedTests = useMemo(() => getSelectedTests(selection.data), [selection.data]);
-    const selectedSummary = useMemo(() => getSelectedSummary(selection.data), [selection.data]);
+    const totalSelected = useMemo(() => {
+        return Object.values(selection.data).reduce((total, categoryData) => {
+            const enabledItems = Object.keys(categoryData.items).filter(testName =>
+                isTestEnabled(enabledTests, Object.keys(selection.data).find(cat => 
+                    selection.data[cat] === categoryData) || '', testName)
+            );
+            return total + enabledItems.filter(testName => categoryData.items[testName]).length;
+        }, 0);
+    }, [selection.data, enabledTests]);
+
+    const selectedTests = useMemo(() => getSelectedTests(selection.data, enabledTests), [selection.data, enabledTests]);
+    const selectedSummary = useMemo(() => getSelectedSummary(selection.data, enabledTests), [selection.data, enabledTests]);
 
     const handleRunTests = useCallback(async () => {
         if (totalSelected === 0) return;
+
+        const formattedTests = formatSelectedTestsForStorage(selectedTests, enabledTests);
+        console.debug('Running tests:', formattedTests);
 
         setIsRunning(true);
         try {
@@ -515,7 +577,7 @@ const MultiLevelSelector: React.FC<TestSelectorProps> = ({ categories, enabledTe
         } finally {
             setIsRunning(false);
         }
-    }, [totalSelected, selectedTests, onRunTests]);
+    }, [totalSelected, selectedTests, enabledTests, onRunTests]);
 
     const handleSelectCategory = useCallback((categoryName: string) => {
         selection.selectCategory(categoryName, enabledTests);
@@ -535,7 +597,7 @@ const MultiLevelSelector: React.FC<TestSelectorProps> = ({ categories, enabledTe
 
             <div className="space-y-2">
                 {Object.entries(selection.data).map(([categoryName, categoryData]) => {
-                    const categoryState = getCategoryState(categoryData.items);
+                    const categoryState = getCategoryState(categoryData.items, enabledTests, categoryName);
                     const filteredItems = filterItems(categoryData.items, search.searchTerms[categoryName] || '');
 
                     return (
@@ -559,6 +621,4 @@ const MultiLevelSelector: React.FC<TestSelectorProps> = ({ categories, enabledTe
     );
 };
 
-
-export type { TestSelectorProps, Category, TestItem, SelectedTest };
 export { MultiLevelSelector };
