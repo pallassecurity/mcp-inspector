@@ -19,35 +19,13 @@ const created = PallasService.create(
 );
 created.loadTestParameters();
 
-// Keep StorageManager clean and focused on storage concerns only
+// Keep StorageManager clean - no React-specific code
 class StorageManager {
   private STORAGE_KEY = "remember";
   private historyTests: PallasTool[][] = [];
   private STORAGE_LIMIT = 3;
-  private listeners: Set<() => void> = new Set();
 
   constructor(private storage: Storage) {}
-
-  // useSyncExternalStore requires these methods
-  subscribe = (listener: () => void) => {
-    this.listeners.add(listener);
-    return () => {
-      this.listeners.delete(listener);
-    };
-  };
-
-  getSnapshot = () => {
-    return this.historyTests;
-  };
-
-  // Optional: for server-side rendering
-  getServerSnapshot = () => {
-    return [];
-  };
-
-  private notifyListeners() {
-    this.listeners.forEach(listener => listener());
-  }
 
   async loadSaved() {
     const saved = this.storage.getItem(this.STORAGE_KEY);
@@ -55,7 +33,6 @@ class StorageManager {
       try {
         const parsed = JSON.parse(saved);
         this.historyTests = parsed || [];
-        this.notifyListeners(); // Notify after loading
       } catch (e) {
         console.error("Failed to parse saved history tests:", e);
         this.historyTests = [];
@@ -91,33 +68,69 @@ class StorageManager {
         }));
       });
       this.storage.setItem(this.STORAGE_KEY, JSON.stringify(data));
-      
-      // Notify React components of the change
-      this.notifyListeners();
     } catch (e) {
       console.error("Error in StorageManager.storeLastTests:", e);
     }
   }
 }
 
+// Separate store adapter for React integration
+class StorageStore {
+  private listeners: Set<() => void> = new Set();
+  private cachedSnapshot: PallasTool[][] = [];
+
+  constructor(private storageManager: StorageManager) {
+    this.cachedSnapshot = this.storageManager.getHistoryTests();
+  }
+
+  subscribe = (listener: () => void) => {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  };
+
+  getSnapshot = () => {
+    return this.cachedSnapshot;
+  };
+
+  getServerSnapshot = () => {
+    return [];
+  };
+
+  async storeLastTests(map) {
+    await this.storageManager.storeLastTests(map);
+    // Update cached snapshot
+    this.cachedSnapshot = this.storageManager.getHistoryTests();
+    this.notifyListeners();
+  }
+
+  private notifyListeners() {
+    // Defer to next tick to avoid update loops
+    setTimeout(() => {
+      this.listeners.forEach(listener => listener());
+    }, 0);
+  }
+}
+
 // Create instances
 const storage = new LocalStorage();
-const manager = new StorageManager(storage);
+const storageManager = new StorageManager(storage);
 
-// Initialize
-await manager.loadSaved();
+await storageManager.loadSaved();
+const storageStore = new StorageStore(storageManager);
 
-// Custom hook using useSyncExternalStore
+
+// Custom hook using useSyncExternalStore with the separate store
 function useStorageManager() {
-  // Use React's built-in hook for external stores
   const historyTests = useSyncExternalStore(
-    manager.subscribe,
-    manager.getSnapshot,
-    manager.getServerSnapshot
+    storageStore.subscribe,
+    storageStore.getSnapshot,
+    storageStore.getServerSnapshot
   );
 
   const storeTests = useCallback(async (map) => {
-    await manager.storeLastTests(map);
+    await storageStore.storeLastTests(map);
   }, []);
 
   return {
