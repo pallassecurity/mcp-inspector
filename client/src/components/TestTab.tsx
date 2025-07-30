@@ -2,10 +2,11 @@ import { StaticBundlerCSVLoader } from "@/lib/pallas/lib/csv";
 import { MultiLevelSelector } from "./MultiLevelSelector";
 import { TabsContent } from "./ui/tabs";
 import { TestCaseManager } from "@/lib/pallas/testManager";
-import { PallasService } from "@/lib/pallas";
-import { useEffect, useState } from "react";
+import { PallasService, PallasTool } from "@/lib/pallas";
+import { useEffect, useMemo, useState } from "react";
 import { Tool } from "@/lib/pallas-sdk";
 import { LocalStorage, Storage } from "@/lib/pallas/lib/storage";
+import { PastTests } from "./PastTests";
 
 const csvLoader = new StaticBundlerCSVLoader();
 csvLoader.registerImport(
@@ -19,7 +20,7 @@ const created = PallasService.create(
 created.loadTestParameters();
 class StorageManager {
   private STORAGE_KEY = "remember";
-  private historyTests = [];
+  private historyTests: PallasTool[][] = [];
   private STORAGE_LIMIT = 3;
   constructor(private storage: Storage) {}
 
@@ -28,7 +29,6 @@ class StorageManager {
 
     const parsed = JSON.parse(saved);
     this.historyTests = parsed;
-    console.log(parsed);
   }
 
   private formatSelectedForStorage(map) {
@@ -49,7 +49,17 @@ class StorageManager {
       this.historyTests.shift();
     }
 
-    this.storage.setItem(this.STORAGE_KEY, JSON.stringify(this.historyTests));
+    try {
+      const data = this.historyTests.map((tests) => {
+        return tests.map((tool) => ({
+          name: tool.name,
+          arguments: tool.arguments,
+        }));
+      });
+      this.storage.setItem(this.STORAGE_KEY, JSON.stringify(data));
+    } catch (e) {
+      console.log("in StorageManager.storeLastTests");
+    }
   }
 }
 
@@ -64,14 +74,21 @@ interface TestTabProps {
 
 const TestTab = ({ tools, callTool }: TestTabProps) => {
   const [myCategories, setMyCategories] = useState<any>([]);
+
+  const memoTests = useMemo(() => {
+    return [
+      [{ name: "wfiwe", arguments: {} }],
+      [{ name: "another", arguments: {} }],
+    ];
+  }, []);
+
   useEffect(() => {
     console.debug("hi", created.getTestCases());
     setMyCategories(parsedToolForSelector(tools));
   }, [tools]);
   return (
     <TabsContent value="test">
-      test
-      <p>hi</p>
+      <PastTests history={memoTests} />
       {myCategories && (
         <MultiLevelSelector
           categories={myCategories}
