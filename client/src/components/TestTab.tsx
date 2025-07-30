@@ -3,7 +3,13 @@ import { MultiLevelSelector } from "./MultiLevelSelector";
 import { TabsContent } from "./ui/tabs";
 import { TestCaseManager } from "@/lib/pallas/testManager";
 import { PallasService, PallasTool } from "@/lib/pallas";
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { Tool } from "@/lib/pallas-sdk";
 import { LocalStorage, Storage } from "@/lib/pallas/lib/storage";
 import { PastTests } from "./PastTests";
@@ -108,7 +114,7 @@ class StorageStore {
   private notifyListeners() {
     // Defer to next tick to avoid update loops
     setTimeout(() => {
-      this.listeners.forEach(listener => listener());
+      this.listeners.forEach((listener) => listener());
     }, 0);
   }
 }
@@ -120,13 +126,12 @@ const storageManager = new StorageManager(storage);
 await storageManager.loadSaved();
 const storageStore = new StorageStore(storageManager);
 
-
 // Custom hook using useSyncExternalStore with the separate store
 function useStorageManager() {
   const historyTests = useSyncExternalStore(
     storageStore.subscribe,
     storageStore.getSnapshot,
-    storageStore.getServerSnapshot
+    storageStore.getServerSnapshot,
   );
 
   const storeTests = useCallback(async (map) => {
@@ -151,20 +156,41 @@ const TestTab = ({ tools, callTool }: TestTabProps) => {
 
   // Now memoTests uses the live historyTests from useSyncExternalStore
   const memoTests = useMemo(() => {
-    return historyTests.length > 0 ? historyTests : [
-      [{ name: "wfiwe", arguments: {} }],
-      [{ name: "another", arguments: {} }],
-    ];
+    return historyTests.length > 0
+      ? historyTests
+      : [
+          [{ name: "placeholder", arguments: {} }],
+          [{ name: "another", arguments: {} }],
+        ];
   }, [historyTests]);
 
   useEffect(() => {
-    console.debug("hi", created.getTestCases());
     setMyCategories(parsedToolForSelector(tools));
   }, [tools]);
 
+  const memoCallTools = useCallback(
+    async (arr: Pick<PallasTool, "arguments" | "name">[]) => {
+      const b = arr.map(async (testTool) => {
+        console.info("calling tool: " + testTool.name);
+        const res = await callTool(testTool.name, testTool.arguments);
+
+        return res;
+      });
+
+      await Promise.all(b);
+      console.info(`done all ${b.length} calls`)
+    },
+    [],
+  );
+
+  const handlePastTestClick = (pastTests) => {
+    console.log(pastTests);
+
+    memoCallTools(pastTests);
+  };
   return (
     <TabsContent value="test">
-      <PastTests history={memoTests} />
+      <PastTests history={memoTests} onTestsClick={handlePastTestClick} />
       {myCategories && (
         <MultiLevelSelector
           categories={myCategories}
@@ -176,7 +202,7 @@ const TestTab = ({ tools, callTool }: TestTabProps) => {
             const filter = filterTestCases(data, created.getTestCases());
             console.log(filter);
             console.info("run these");
-            
+
             for (const [name, tool] of filter.entries()) {
               console.info("calling tool: " + name);
               callTool(name, tool.arguments);
