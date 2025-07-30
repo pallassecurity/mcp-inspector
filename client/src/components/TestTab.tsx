@@ -3,7 +3,7 @@ import { MultiLevelSelector } from "./MultiLevelSelector";
 import { TabsContent } from "./ui/tabs";
 import { TestCaseManager } from "@/lib/pallas/testManager";
 import { PallasService, PallasTool } from "@/lib/pallas";
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { Tool } from "@/lib/pallas-sdk";
 import { LocalStorage, Storage } from "@/lib/pallas/lib/storage";
 import { PastTests } from "./PastTests";
@@ -24,8 +24,30 @@ class StorageManager {
   private STORAGE_KEY = "remember";
   private historyTests: PallasTool[][] = [];
   private STORAGE_LIMIT = 3;
+  private listeners: Set<() => void> = new Set();
 
   constructor(private storage: Storage) {}
+
+  // useSyncExternalStore requires these methods
+  subscribe = (listener: () => void) => {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  };
+
+  getSnapshot = () => {
+    return this.historyTests;
+  };
+
+  // Optional: for server-side rendering
+  getServerSnapshot = () => {
+    return [];
+  };
+
+  private notifyListeners() {
+    this.listeners.forEach(listener => listener());
+  }
 
   async loadSaved() {
     const saved = this.storage.getItem(this.STORAGE_KEY);
@@ -33,6 +55,7 @@ class StorageManager {
       try {
         const parsed = JSON.parse(saved);
         this.historyTests = parsed || [];
+        this.notifyListeners(); // Notify after loading
       } catch (e) {
         console.error("Failed to parse saved history tests:", e);
         this.historyTests = [];
@@ -68,74 +91,33 @@ class StorageManager {
         }));
       });
       this.storage.setItem(this.STORAGE_KEY, JSON.stringify(data));
+      
+      // Notify React components of the change
+      this.notifyListeners();
     } catch (e) {
       console.error("Error in StorageManager.storeLastTests:", e);
     }
   }
 }
 
-// Separate reactive wrapper class for React integration
-class ReactiveStorageManager {
-  private listeners: Set<() => void> = new Set();
-
-  constructor(private storageManager: StorageManager) {}
-
-  // Subscribe to changes
-  subscribe(listener: () => void) {
-    this.listeners.add(listener);
-    return () => {
-      this.listeners.delete(listener);
-    };
-  }
-
-  // Notify all listeners of changes
-  private notifyListeners() {
-    this.listeners.forEach(listener => listener());
-  }
-
-  // Proxy methods to StorageManager with reactivity
-  async loadSaved() {
-    await this.storageManager.loadSaved();
-    this.notifyListeners();
-  }
-
-  getHistoryTests(): PallasTool[][] {
-    return this.storageManager.getHistoryTests();
-  }
-
-  async storeLastTests(map) {
-    await this.storageManager.storeLastTests(map);
-    this.notifyListeners(); // Notify React components after storage update
-  }
-}
-
 // Create instances
 const storage = new LocalStorage();
 const manager = new StorageManager(storage);
-const reactiveManager = new ReactiveStorageManager(manager);
 
 // Initialize
 await manager.loadSaved();
 
-// Custom hook to use ReactiveStorageManager with React state
+// Custom hook using useSyncExternalStore
 function useStorageManager() {
-  const [historyTests, setHistoryTests] = useState<PallasTool[][]>([]);
-
-  useEffect(() => {
-    // Initialize with current state
-    setHistoryTests(reactiveManager.getHistoryTests());
-
-    // Subscribe to changes
-    const unsubscribe = reactiveManager.subscribe(() => {
-      setHistoryTests(reactiveManager.getHistoryTests());
-    });
-
-    // Cleanup subscription on unmount
-    return unsubscribe;
-  }, []);
+  // Use React's built-in hook for external stores
+  const historyTests = useSyncExternalStore(
+    manager.subscribe,
+    manager.getSnapshot,
+    manager.getServerSnapshot
+  );
 
   const storeTests = useCallback(async (map) => {
-    await reactiveManager.storeLastTests(map);
+    await manager.storeLastTests(map);
   }, []);
 
   return {
@@ -154,7 +136,7 @@ const TestTab = ({ tools, callTool }: TestTabProps) => {
   const [myCategories, setMyCategories] = useState<any>([]);
   const { historyTests, storeTests } = useStorageManager();
 
-  // Now memoTests uses the live historyTests from the ReactiveStorageManager
+  // Now memoTests uses the live historyTests from useSyncExternalStore
   const memoTests = useMemo(() => {
     return historyTests.length > 0 ? historyTests : [
       [{ name: "wfiwe", arguments: {} }],
