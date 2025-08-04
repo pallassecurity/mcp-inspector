@@ -1,5 +1,5 @@
 import { MethodExposer, PallasTool } from "./index.js";
-import { CSVLoader } from "./lib/csv.js";
+import { CSVLoader } from "./csv.js";
 
 interface ITestCaseManagerConfig {
   csvLoader?: CSVLoader;

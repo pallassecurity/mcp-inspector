@@ -2,7 +2,7 @@ import React, { useState, useCallback, useMemo, useEffect } from "react";
 import { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { MultiLevelSelector } from "../lib/pallas/MultiLevelSelector";
 import { PallasService } from "../lib/pallas";
-import { BundlerCSVLoader, StaticBundlerCSVLoader } from "@/lib/pallas/lib/csv";
+import { BundlerCSVLoader, StaticBundlerCSVLoader } from "@/lib/pallas/csv";
 import { TestCaseManager } from "@/lib/pallas/TestManagerOld";
 
 const csvLoader = new StaticBundlerCSVLoader()

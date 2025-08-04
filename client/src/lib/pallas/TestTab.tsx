@@ -1,4 +1,4 @@
-import { BrowserCSVLoader } from "./lib/csv";
+import { BrowserCSVLoader } from "./csv";
 import { PallasService, PallasTool } from "./index";
 import {
   useCallback,
@@ -7,7 +7,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { LocalStorage, Storage } from "./lib/storage";
+import { LocalStorage, Storage } from "./storage";
 
 import { PastTests } from "./PastTests";
 import { MultiLevelSelector } from "./MultiLevelSelector";
