@@ -19,7 +19,7 @@ import {
 } from "./client/index.js";
 import { handleError } from "./error-handler.js";
 import { createTransport, TransportOptions } from "./transport.js";
-import { TestCaseManager } from "./lib/pallas/testManager.js";
+import { TestCaseManager } from "./lib/pallas/TestManager.js";
 import { FileSystemCSVLoader } from "./lib/pallas/lib/csv.js";
 
 type Args = {

@@ -71,7 +71,7 @@ import {
   initializeInspectorConfig,
   saveInspectorConfig,
 } from "./utils/configUtils";
-import TestTab from "./components/TestTab";
+import TestTab from "./lib/pallas/TestTab";
 const CONFIG_LOCAL_STORAGE_KEY = "inspectorConfig_v1";
 
 const App = () => {

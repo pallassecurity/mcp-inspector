@@ -31,7 +31,6 @@ interface CategoryData {
 type SelectionData = Record<string, CategoryData>;
 type CategoryState = 'none' | 'partial' | 'all';
 
-
 const createInitialData = (categories: Category[]): SelectionData => {
     return categories.reduce((acc, category) => {
         acc[category.name] = {
@@ -103,6 +102,7 @@ const formatSelectedTestsForStorage = (selectedTests: SelectedTest[], enabledTes
         tests: formattedTests
     };
 };
+
 const getSelectedSummary = (data: SelectionData, enabledTests?: Map<string, PallasTool>): string | null => {
     const summary = Object.entries(data).map(([categoryName, categoryData]) => {
         const enabledItems = Object.keys(categoryData.items).filter(testName =>
@@ -139,14 +139,11 @@ const filterItems = (items: Record<string, boolean>, searchTerm: string): Record
 const isTestEnabled = (enabledTests: Map<string, PallasTool> | undefined, categoryName: string, testName: string): boolean => {
     if (!enabledTests) return false;
     
-    // Check direct match first
     if (enabledTests.has(testName)) return true;
     
-    // Check if testName matches the format server-toolName
     const toolKey = `${categoryName}-${testName}`;
     if (enabledTests.has(toolKey)) return true;
     
-    // Check if any tool in the map matches this test
     for (const [key, tool] of enabledTests) {
         if (tool.isSameTool(testName) || tool.isSameTool(toolKey)) {
             return true;
@@ -192,9 +189,6 @@ const Clock: React.FC<{ className?: string }> = ({ className = "" }) => (
     </svg>
 );
 
-/**
- * Custom hook for managing test selection state across categories
- */
 const useSelection = (initialData: SelectionData) => {
     const [data, setData] = useState<SelectionData>(initialData);
 
@@ -278,18 +272,18 @@ interface SearchBarProps {
 
 const SearchBar: React.FC<SearchBarProps> = ({ categoryName, totalItems, searchTerm, onSearchChange }) => (
     <div className="flex-1 relative">
-        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-gray-500" />
         <input
             type="text"
             placeholder={`Search ${totalItems} tests...`}
             value={searchTerm}
             onChange={(e) => onSearchChange(e.target.value)}
-            className="w-full pl-10 pr-10 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            className="w-full pl-10 pr-10 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-blue-500 dark:focus:border-blue-400"
         />
         {searchTerm && (
             <button
                 onClick={() => onSearchChange('')}
-                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300"
             >
                 <X className="w-4 h-4" />
             </button>
@@ -307,7 +301,7 @@ interface ItemListProps {
 const ItemList: React.FC<ItemListProps> = ({ items, categoryName, enabledTests, onItemSelect }) => {
     if (Object.keys(items).length === 0) {
         return (
-            <div className="p-4 text-center text-gray-500">
+            <div className="p-4 text-center text-gray-500 dark:text-gray-400">
                 No tests match your search
             </div>
         );
@@ -323,8 +317,8 @@ const ItemList: React.FC<ItemListProps> = ({ items, categoryName, enabledTests, 
                         <label
                             key={testName}
                             className={`flex items-center space-x-2 p-2 rounded text-sm border-l-2 border-transparent ${enabled
-                                ? 'cursor-pointer hover:bg-gray-50 hover:border-blue-300'
-                                : 'cursor-not-allowed opacity-50 bg-gray-25'
+                                ? 'cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 hover:border-blue-300 dark:hover:border-blue-400'
+                                : 'cursor-not-allowed opacity-50 bg-gray-25 dark:bg-gray-800'
                                 }`}
                         >
                             <input
@@ -332,9 +326,9 @@ const ItemList: React.FC<ItemListProps> = ({ items, categoryName, enabledTests, 
                                 checked={selected}
                                 disabled={!enabled}
                                 onChange={() => enabled && onItemSelect(categoryName, testName)}
-                                className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 flex-shrink-0 disabled:opacity-50"
+                                className="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-blue-600 dark:text-blue-400 focus:ring-blue-500 dark:focus:ring-blue-400 flex-shrink-0 disabled:opacity-50 bg-white dark:bg-gray-700"
                             />
-                            <span className={`truncate ${enabled ? 'text-gray-700' : 'text-gray-400'}`}>
+                            <span className={`truncate ${enabled ? 'text-gray-700 dark:text-gray-300' : 'text-gray-400 dark:text-gray-500'}`}>
                                 {testName}
                             </span>
                         </label>
@@ -366,16 +360,16 @@ const CategoryHeader: React.FC<CategoryHeaderProps> = ({
     onToggle,
     onSelect
 }) => (
-    <div className="bg-gray-50 p-4 flex items-center justify-between hover:bg-gray-100 transition-colors">
+    <div className="bg-gray-50 dark:bg-gray-800 p-4 flex items-center justify-between hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
         <div className="flex items-center space-x-3">
             <button
                 onClick={onToggle}
-                className="p-1 hover:bg-gray-200 rounded"
+                className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded"
             >
                 {isExpanded ? (
-                    <ChevronDown className="w-4 h-4" />
+                    <ChevronDown className="w-4 h-4 text-gray-600 dark:text-gray-400" />
                 ) : (
-                    <ChevronRight className="w-4 h-4" />
+                    <ChevronRight className="w-4 h-4 text-gray-600 dark:text-gray-400" />
                 )}
             </button>
 
@@ -387,16 +381,16 @@ const CategoryHeader: React.FC<CategoryHeaderProps> = ({
                         if (el) el.indeterminate = categoryState === 'partial';
                     }}
                     onChange={onSelect}
-                    className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    className="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-blue-600 dark:text-blue-400 focus:ring-blue-500 dark:focus:ring-blue-400 bg-white dark:bg-gray-700"
                 />
-                <span className="font-medium text-gray-900">{categoryName}</span>
+                <span className="font-medium text-gray-900 dark:text-gray-100">{categoryName}</span>
             </label>
         </div>
 
-        <div className="text-sm text-gray-500">
+        <div className="text-sm text-gray-500 dark:text-gray-400">
             <span>{selectedCount} / {enabledCount} selected</span>
             {disabledCount > 0 && (
-                <span className="ml-2 text-xs text-gray-400">
+                <span className="ml-2 text-xs text-gray-400 dark:text-gray-500">
                     ({disabledCount} disabled)
                 </span>
             )}
@@ -447,7 +441,7 @@ const CategorySection: React.FC<CategorySectionProps> = ({
     }, [categoryData.items, enabledCount]);
 
     return (
-        <div className="border rounded-lg overflow-hidden">
+        <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
             <CategoryHeader
                 categoryName={categoryName}
                 categoryState={categoryState}
@@ -460,8 +454,8 @@ const CategorySection: React.FC<CategorySectionProps> = ({
             />
 
             {categoryData.expanded && (
-                <div className="bg-white border-t">
-                    <div className="p-4 border-b bg-gray-25">
+                <div className="bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700">
+                    <div className="p-4 border-b border-gray-200 dark:border-gray-700 bg-gray-25 dark:bg-gray-800">
                         <SearchBar
                             categoryName={categoryName}
                             totalItems={Object.keys(categoryData.items).length}
@@ -492,11 +486,11 @@ interface SelectionSummaryProps {
 }
 
 const SelectionSummary: React.FC<SelectionSummaryProps> = ({ totalSelected, selectedSummary, onRun, isRunning }) => (
-    <div className="bg-gray-50 p-4 rounded-lg">
+    <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg">
         <div className="flex justify-between items-center mb-3">
             <div>
-                <span className="font-medium">Selected: {totalSelected} tests</span>
-                <span className="text-sm text-gray-600 ml-4">
+                <span className="font-medium text-gray-900 dark:text-gray-100">Selected: {totalSelected} tests</span>
+                <span className="text-sm text-gray-600 dark:text-gray-400 ml-4">
                     {totalSelected === 0 ? 'Select tests to run' : 'Ready to execute'}
                 </span>
             </div>
@@ -505,10 +499,10 @@ const SelectionSummary: React.FC<SelectionSummaryProps> = ({ totalSelected, sele
                 onClick={onRun}
                 disabled={isRunning || totalSelected === 0}
                 className={`flex items-center space-x-2 px-6 py-3 rounded-lg font-medium transition-all ${isRunning
-                    ? 'bg-orange-100 text-orange-700 cursor-not-allowed'
+                    ? 'bg-orange-100 dark:bg-orange-900 text-orange-700 dark:text-orange-300 cursor-not-allowed'
                     : totalSelected === 0
-                        ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                        : 'bg-green-600 text-white hover:bg-green-700 hover:shadow-lg transform hover:scale-105'
+                        ? 'bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed'
+                        : 'bg-green-600 dark:bg-green-700 text-white hover:bg-green-700 dark:hover:bg-green-600 hover:shadow-lg transform hover:scale-105'
                     }`}
             >
                 {isRunning ? (
@@ -526,7 +520,7 @@ const SelectionSummary: React.FC<SelectionSummaryProps> = ({ totalSelected, sele
         </div>
 
         {selectedSummary && (
-            <div className="text-sm text-gray-700 bg-white p-3 rounded border max-h-24 overflow-y-auto">
+            <div className="text-sm text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-900 p-3 rounded border border-gray-200 dark:border-gray-700 max-h-24 overflow-y-auto">
                 {selectedSummary}
             </div>
         )}
@@ -577,9 +571,9 @@ const MultiLevelSelector: React.FC<TestSelectorProps> = ({ categories, enabledTe
     }, [selection.selectCategory, enabledTests]);
 
     return (
-        <div className="max-w-4xl mx-auto p-6 bg-white">
+        <div className="max-w-4xl mx-auto p-6 bg-white dark:bg-gray-900">
             <div className="mb-6">
-                <h2 className="text-2xl font-bold mb-4">Test Suite Selection</h2>
+                <h2 className="text-2xl font-bold mb-4 text-gray-900 dark:text-gray-100">Test Suite Selection</h2>
                 <SelectionSummary
                     totalSelected={totalSelected}
                     selectedSummary={selectedSummary}
@@ -613,7 +607,6 @@ const MultiLevelSelector: React.FC<TestSelectorProps> = ({ categories, enabledTe
         </div>
     );
 };
-
 
 export type { TestSelectorProps, Category, TestItem, SelectedTest };
 export { MultiLevelSelector };

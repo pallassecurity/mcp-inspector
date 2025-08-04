@@ -1,5 +1,5 @@
-import { IMethodExposer, PallasTool } from "./index";
-import { CSVLoader } from "./lib/csv";
+import { IMethodExposer, PallasTool } from "./index.js";
+import { CSVLoader } from "./lib/csv.js";
 
 /**
  * Configuration interface for TestCaseManager

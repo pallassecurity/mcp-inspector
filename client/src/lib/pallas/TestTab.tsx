@@ -1,8 +1,6 @@
-import { BrowserCSVLoader, StaticBundlerCSVLoader } from "@/lib/pallas/lib/csv";
-import { MultiLevelSelector } from "./MultiLevelSelector";
-import { TabsContent } from "./ui/tabs";
-import { TestCaseManager } from "@/lib/pallas/testManager";
-import { PallasService, PallasTool } from "@/lib/pallas";
+import { BrowserCSVLoader } from "./lib/csv";
+import { TestCaseManager } from "./testManager";
+import { PallasService, PallasTool } from "./index";
 import {
   useCallback,
   useEffect,
@@ -11,10 +9,11 @@ import {
   useSyncExternalStore,
 } from "react";
 import { Tool } from "@/lib/pallas-sdk";
-import { LocalStorage, Storage } from "@/lib/pallas/lib/storage";
-//import { LocalStorage, Storage } from "@pallassecurity/pallas-typescript";
+import { LocalStorage, Storage } from "./lib/storage";
 
 import { PastTests } from "./PastTests";
+import { MultiLevelSelector } from "./MultiLevelSelector";
+import { TabsContent } from "@/components/ui/tabs";
 
 const csvLoader = new BrowserCSVLoader();
 
@@ -181,12 +180,7 @@ const TestTab = ({ tools, callTool }: TestTabProps) => {
 
   // Now memoTests uses the live historyTests from useSyncExternalStore
   const memoTests = useMemo(() => {
-    return historyTests.length > 0
-      ? historyTests
-      : [
-          [{ name: "placeholder", arguments: {} }],
-          [{ name: "another", arguments: {} }],
-        ];
+    return historyTests.length > 0 ? historyTests : [];
   }, [historyTests]);
 
   useEffect(() => {
@@ -257,6 +251,8 @@ const TestTab = ({ tools, callTool }: TestTabProps) => {
                   console.info("calling tool: " + name);
                   callTool(name, tool.arguments);
                 }
+
+                await storeTests(filter);
               }}
             />
           )}
