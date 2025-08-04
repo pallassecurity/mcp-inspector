@@ -18,9 +18,9 @@ type ExtractMethods<T> = {
 
 type PickExposedMethods<T, K extends keyof T> = Pick<ExtractMethods<T>, K>;
 
-type UnionToIntersection<U> = (U extends unknown ? (k: U) => void : never) extends (
-  k: infer I,
-) => void
+type UnionToIntersection<U> = (
+  U extends unknown ? (k: U) => void : never
+) extends (k: infer I) => void
   ? I
   : never;
 
@@ -147,7 +147,9 @@ class PallasServiceBase {
     const conflicts: string[] = [];
 
     for (const methodName of exposedMethods) {
-      if (typeof (instance as Record<string, unknown>)[methodName] !== "function") {
+      if (
+        typeof (instance as Record<string, unknown>)[methodName] !== "function"
+      ) {
         console.error(
           `Method '${methodName}' not found on class '${className}' or is not a function`,
         );
@@ -185,7 +187,9 @@ class PallasServiceBase {
         }
       }
 
-      (this as Record<string, unknown>)[methodName] = (instance as Record<string, unknown>)[methodName].bind(instance);
+      (this as Record<string, unknown>)[methodName] = (
+        instance as Record<string, unknown>
+      )[methodName].bind(instance);
       this._exposedMethods.set(methodName, {
         instance,
         methodName,
@@ -318,13 +322,13 @@ class PallasTool {
   }
 }
 
-export type { 
-  MethodExposer, 
-  MethodConflict, 
+export type {
+  MethodExposer,
+  MethodConflict,
   PallasServiceConfig,
   ExtractMethods,
   PickExposedMethods,
-  UnionToIntersection
+  UnionToIntersection,
 };
 
 export { PallasService, PallasServiceBase, PallasTool };

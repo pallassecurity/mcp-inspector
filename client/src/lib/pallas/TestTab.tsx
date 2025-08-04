@@ -1,5 +1,4 @@
 import { BrowserCSVLoader } from "./lib/csv";
-import { TestCaseManager } from "./testManager";
 import { PallasService, PallasTool } from "./index";
 import {
   useCallback,
@@ -8,12 +7,13 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { Tool } from "@/lib/pallas-sdk";
 import { LocalStorage, Storage } from "./lib/storage";
 
 import { PastTests } from "./PastTests";
 import { MultiLevelSelector } from "./MultiLevelSelector";
 import { TabsContent } from "@/components/ui/tabs";
+import { Tool } from "@modelcontextprotocol/sdk/types.js";
+import { TestCaseManager } from "./TestCaseManager";
 
 interface TestSelection {
   category: string;
@@ -39,7 +39,6 @@ interface StoredTestTool {
 
 const csvLoader = new BrowserCSVLoader();
 
-// Assuming TestCaseManager implements MethodExposer interface
 const testCaseManager = new TestCaseManager({ 
   csvLoader, 
   dataSource: "testCases.csv" 
@@ -53,7 +52,7 @@ const created = PallasService.create(testCaseManager);
 created.loadTestParameters();
 
 class StorageManager {
-  private STORAGE_KEY = "remember";
+  private STORAGE_KEY = "__INSPECTOR_BULK_TOOL_CALLS";
   private historyTests: StoredTestTool[][] = [];
   private STORAGE_LIMIT = 3;
 
@@ -63,7 +62,7 @@ class StorageManager {
     const saved = this.storage.getItem(this.STORAGE_KEY);
     if (saved) {
       try {
-        const parsed = JSON.parse(saved);
+        const parsed = JSON.parse(saved as string);
         this.historyTests = parsed || [];
       } catch (e) {
         console.error("Failed to parse saved history tests:", e);

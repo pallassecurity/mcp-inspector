@@ -3,7 +3,7 @@ import { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { MultiLevelSelector } from "../lib/pallas/MultiLevelSelector";
 import { PallasService } from "../lib/pallas";
 import { BundlerCSVLoader, StaticBundlerCSVLoader } from "@/lib/pallas/lib/csv";
-import { TestCaseManager } from "@/lib/pallas/testManager";
+import { TestCaseManager } from "@/lib/pallas/TestManagerOld";
 
 const csvLoader = new StaticBundlerCSVLoader()
 csvLoader.registerImport('../data/testCases.csv', () => import('../data/testCases.csv'));

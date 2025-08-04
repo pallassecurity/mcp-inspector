@@ -1,306 +1,58 @@
-/**
- * Abstract interface for CSV data loading
- */
 interface CSVLoader {
-    /**
-     * Load CSV data and return parsed rows
-     * @param source - The source identifier (file path, import path, etc.)
-     * @returns Promise resolving to array of parsed CSV rows
-     */
-    loadCSV(source: string): Promise<any[]>;
+    loadCSV(source: string): Promise<TestCaseRow[]>;
 }
 
-/**
- * Interface for test case data row structure
- */
-interface ITestCaseRow {
+interface TestCaseRow {
     server: string;
     tool: string;
     request_args: string;
-    [key: string]: any; // Allow additional columns
+    [key: string]: string | number | boolean;
 }
 
-/**
- * Bundler-based CSV loader for React/Webpack/Vite environments
- * Uses dynamic imports to load CSV files processed by bundler plugins
- */
-class BundlerCSVLoader implements CSVLoader {
-    async loadCSV(source: string): Promise<ITestCaseRow[]> {
-        try {
-            // Dynamic import for bundler-processed CSV files
-            // @vite-ignore - Suppress Vite dynamic import analysis warning
-            const data = await import(/* @vite-ignore */ source);
-            // Handle both default exports and named exports
-            const csvData = data.default || data;
-            
-            if (!Array.isArray(csvData)) {
-                throw new Error(`Expected CSV data to be an array, got ${typeof csvData}`);
-            }
-            
-            return csvData;
-        } catch (error) {
-            throw new Error(`Failed to load CSV from bundler: ${error.message}`);
-        }
-    }
-}
-
-/**
- * Static bundler CSV loader for Vite/Webpack environments
- * Uses a predefined import map to avoid dynamic import issues
- */
-class StaticBundlerCSVLoader implements CSVLoader {
-    private importMap: Map<string, () => Promise<any>> = new Map();
-
-    /**
-     * Register a static import for a CSV file
-     * @param source - The source path used as key
-     * @param importFn - Function that returns the import promise
-     */
-    registerImport(source: string, importFn: () => Promise<any>): void {
-        this.importMap.set(source, importFn);
-    }
-
-    async loadCSV(source: string): Promise<ITestCaseRow[]> {
-        const importFn = this.importMap.get(source);
-
-        if (!importFn) {
-            throw new Error(`No static import registered for source: ${source}. Use registerImport() first.`);
-        }
-
-        try {
-            const data = await importFn();
-            const csvData = data.default || data;
-
-            if (!Array.isArray(csvData)) {
-                throw new Error(`Expected CSV data to be an array, got ${typeof csvData}`);
-            }
-
-            return csvData;
-        } catch (error) {
-            throw new Error(`Failed to load CSV from static bundler import: ${error.message}`);
-        }
-    }
-}
-
-
-/**
- * File system CSV loader for Node.js/CLI environments
- * Uses Node.js built-in fs module with simple CSV parsing
- */
-class FileSystemCSVLoader implements CSVLoader {
-    async loadCSV(source: string): Promise<ITestCaseRow[]> {
-        // Only import fs when actually needed (Node.js environment)
-        const fs = await import('fs');
-
-        try {
-            const csvText = await fs.promises.readFile(source, 'utf-8');
-            return this.parseCSVText(csvText);
-        } catch (error) {
-            throw new Error(`Failed to read CSV file: ${error.message}`);
-        }
-    }
-
-    /**
-     * Simple CSV parser that handles basic CSV format
-     * Supports quoted fields and escaped quotes
-     */
-    private parseCSVText(csvText: string): ITestCaseRow[] {
-        const lines = csvText.trim().split('\n');
-        if (lines.length === 0) return [];
-
-        // Parse header row
-        const headers = this.parseCSVLine(lines[0]);
-        const rows: ITestCaseRow[] = [];
-
-        // Parse data rows
-        for (let i = 1; i < lines.length; i++) {
-            const values = this.parseCSVLine(lines[i]);
-            const row: any = {};
-
-            headers.forEach((header, index) => {
-                row[header] = values[index] || '';
-            });
-
-            rows.push(row);
-        }
-
-        return rows;
-    }
-
-    /**
-     * Parse a single CSV line handling quoted fields
-     */
-    private parseCSVLine(line: string): string[] {
-        const result: string[] = [];
-        let current = '';
-        let inQuotes = false;
-
-        for (let i = 0; i < line.length; i++) {
-            const char = line[i];
-            const nextChar = line[i + 1];
-
-            if (char === '"' && inQuotes && nextChar === '"') {
-                // Escaped quote
-                current += '"';
-                i++; // Skip next quote
-            } else if (char === '"') {
-                // Toggle quote state
-                inQuotes = !inQuotes;
-            } else if (char === ',' && !inQuotes) {
-                // Field separator
-                result.push(current.trim());
-                current = '';
-            } else {
-                // Regular character
-                current += char;
-            }
-        }
-
-        // Add the last field
-        result.push(current.trim());
-
-        return result;
-    }
-}
-
-/**
- * Web-based CSV loader using fetch API
- * Useful for loading CSV files from URLs in browser environments
- */
-export class WebCSVLoader implements CSVLoader {
-    async loadCSV(source: string): Promise<ITestCaseRow[]> {
-        try {
-            const response = await fetch(source);
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
-
-            const csvText = await response.text();
-            return this.parseCSVText(csvText);
-        } catch (error) {
-            throw new Error(`Failed to load CSV from web: ${error.message}`);
-        }
-    }
-
-    /**
-     * Simple CSV parser - same as FileSystemCSVLoader
-     */
-    private parseCSVText(csvText: string): ITestCaseRow[] {
-        const lines = csvText.trim().split('\n');
-        if (lines.length === 0) return [];
-
-        const headers = this.parseCSVLine(lines[0]);
-        const rows: ITestCaseRow[] = [];
-
-        for (let i = 1; i < lines.length; i++) {
-            const values = this.parseCSVLine(lines[i]);
-            const row: any = {};
-
-            headers.forEach((header, index) => {
-                row[header] = values[index] || '';
-            });
-
-            rows.push(row);
-        }
-
-        return rows;
-    }
-
-    private parseCSVLine(line: string): string[] {
-        const result: string[] = [];
-        let current = '';
-        let inQuotes = false;
-
-        for (let i = 0; i < line.length; i++) {
-            const char = line[i];
-            const nextChar = line[i + 1];
-
-            if (char === '"' && inQuotes && nextChar === '"') {
-                current += '"';
-                i++;
-            } else if (char === '"') {
-                inQuotes = !inQuotes;
-            } else if (char === ',' && !inQuotes) {
-                result.push(current.trim());
-                current = '';
-            } else {
-                current += char;
-            }
-        }
-
-        result.push(current.trim());
-        return result;
-    }
-}
-
-/**
- * Browser file upload CSV loader for client-side file processing
- * Uses File API with Papa Parse for robust CSV parsing
- */
 class BrowserCSVLoader implements CSVLoader {
-    private csvData: ITestCaseRow[] | null = null;
+    private csvData: TestCaseRow[] | null = null;
 
-    /**
-     * Load CSV from uploaded File object
-     */
-    async loadFromFile(file: File): Promise<ITestCaseRow[]> {
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            
-            reader.onload = (event) => {
-                try {
-                    const csvText = event.target?.result as string;
-                    // Use Papa Parse for robust parsing (if available)
-                    // Otherwise fall back to simple parsing
-                    if (typeof window !== 'undefined' && (window as any).Papa) {
-                        const parsed = (window as any).Papa.parse(csvText, {
-                            header: true,
-                            dynamicTyping: true,
-                            skipEmptyLines: true,
-                            delimitersToGuess: [',', '\t', '|', ';']
-                        });
-                        this.csvData = parsed.data;
-                        resolve(parsed.data);
-                    } else {
-                        this.csvData = this.parseCSVText(csvText);
-                        resolve(this.csvData);
-                    }
-                } catch (error) {
-                    reject(new Error(`Failed to parse CSV: ${error.message}`));
-                }
-            };
-            
-            reader.onerror = () => reject(new Error('Failed to read file'));
-            reader.readAsText(file);
-        });
+    async loadFromFile(file: File): Promise<TestCaseRow[]> {
+        const csvText = await file.text();
+        this.csvData = this.parseCSVText(csvText);
+        return this.csvData;
     }
 
-    async loadCSV(source: string): Promise<ITestCaseRow[]> {
+    async loadCSV(): Promise<TestCaseRow[]> {
         if (!this.csvData) {
             throw new Error('No CSV file uploaded. Use loadFromFile() first.');
         }
         return this.csvData;
     }
 
-    private parseCSVText(csvText: string): ITestCaseRow[] {
+    private parseCSVText(csvText: string): TestCaseRow[] {
         const lines = csvText.trim().split('\n');
         if (lines.length === 0) return [];
 
         const headers = this.parseCSVLine(lines[0]).map(h => h.trim());
-        const rows: ITestCaseRow[] = [];
+        return this.parseDataLines(lines.slice(1), headers);
+    }
 
-        for (let i = 1; i < lines.length; i++) {
-            const values = this.parseCSVLine(lines[i]);
-            const row: any = {};
-
-            headers.forEach((header, index) => {
-                row[header] = values[index]?.trim() || '';
-            });
-
+    private parseDataLines(lines: string[], headers: string[]): TestCaseRow[] {
+        const rows: TestCaseRow[] = [];
+        
+        for (const line of lines) {
+            const values = this.parseCSVLine(line);
+            const row = this.createRowFromValues(headers, values);
             rows.push(row);
         }
-
+        
         return rows;
+    }
+
+    private createRowFromValues(headers: string[], values: string[]): TestCaseRow {
+        const row: Record<string, string> = {};
+        
+        headers.forEach((header, index) => {
+            row[header] = values[index] ?? '';
+        });
+        
+        return row as TestCaseRow;
     }
 
     private parseCSVLine(line: string): string[] {
@@ -312,24 +64,31 @@ class BrowserCSVLoader implements CSVLoader {
             const char = line[i];
             const nextChar = line[i + 1];
 
-            if (char === '"' && inQuotes && nextChar === '"') {
+            if (this.isEscapedQuote(char, nextChar, inQuotes)) {
                 current += '"';
                 i++;
             } else if (char === '"') {
                 inQuotes = !inQuotes;
-            } else if (char === ',' && !inQuotes) {
+            } else if (this.isFieldSeparator(char, inQuotes)) {
                 result.push(current);
                 current = '';
             } else {
                 current += char;
             }
         }
-
+        
         result.push(current);
         return result;
     }
+
+    private isEscapedQuote(char: string, nextChar: string | undefined, inQuotes: boolean): boolean {
+        return char === '"' && inQuotes && nextChar === '"';
+    }
+
+    private isFieldSeparator(char: string, inQuotes: boolean): boolean {
+        return char === ',' && !inQuotes;
+    }
 }
 
-
-export type { CSVLoader }
-export { FileSystemCSVLoader, BundlerCSVLoader, StaticBundlerCSVLoader, BrowserCSVLoader }
+export type { CSVLoader, TestCaseRow as ITestCaseRow };
+export { BrowserCSVLoader };

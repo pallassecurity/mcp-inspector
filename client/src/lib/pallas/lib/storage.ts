@@ -1,79 +1,22 @@
-/**
- * Base Storage class that defines the interface for all storage implementations
- */
-class Storage {
-    /**
-     * Get an item from storage
-     * @param {string} key - The key to retrieve
-     * @returns {any} The parsed value or null if not found
-     */
-    getItem(key) {
-      throw new Error('getItem method must be implemented');
-    }
-  
-    /**
-     * Set an item in storage
-     * @param {string} key - The key to store under
-     * @param {any} value - The value to store (will be JSON stringified)
-     * @returns {void}
-     */
-    setItem(key, value) {
-      throw new Error('setItem method must be implemented');
-    }
-  
-    /**
-     * Remove an item from storage
-     * @param {string} key - The key to remove
-     * @returns {void}
-     */
-    removeItem(key) {
-      throw new Error('removeItem method must be implemented');
-    }
-  
-    /**
-     * Clear all items from storage
-     * @returns {void}
-     */
-    clear() {
-      throw new Error('clear method must be implemented');
-    }
-  
-    /**
-     * Get all keys in storage
-     * @returns {string[]} Array of all keys
-     */
-    getAllKeys() {
-      throw new Error('getAllKeys method must be implemented');
-    }
-  
-    /**
-     * Check if a key exists in storage
-     * @param {string} key - The key to check
-     * @returns {boolean} True if key exists
-     */
-    hasItem(key) {
-      throw new Error('hasItem method must be implemented');
-    }
-  
-    /**
-     * Get the number of items in storage
-     * @returns {number} Number of items
-     */
-    length() {
-      throw new Error('length method must be implemented');
-    }
+export abstract class Storage {
+    abstract getItem<T = unknown>(key: string): T | null;
+    abstract setItem<T = unknown>(key: string, value: T): void;
+    abstract removeItem(key: string): void;
+    abstract clear(): void;
+    abstract getAllKeys(): string[];
+    abstract hasItem(key: string): boolean;
+    abstract length(): number;
   }
   
-  /**
-   * LocalStorage implementation of the Storage interface
-   */
-  class LocalStorage extends Storage {
+  export class LocalStorage extends Storage {
+    private storage: globalThis.Storage;
+  
     constructor() {
       super();
       this.storage = window.localStorage;
     }
   
-    getItem(key) {
+    getItem<T = unknown>(key: string): T | null {
       try {
         const item = this.storage.getItem(key);
         return item ? JSON.parse(item) : null;
@@ -83,7 +26,7 @@ class Storage {
       }
     }
   
-    setItem(key, value) {
+    setItem<T = unknown>(key: string, value: T): void {
       try {
         this.storage.setItem(key, JSON.stringify(value));
       } catch (error) {
@@ -91,7 +34,7 @@ class Storage {
       }
     }
   
-    removeItem(key) {
+    removeItem(key: string): void {
       try {
         this.storage.removeItem(key);
       } catch (error) {
@@ -99,7 +42,7 @@ class Storage {
       }
     }
   
-    clear() {
+    clear(): void {
       try {
         this.storage.clear();
       } catch (error) {
@@ -107,7 +50,7 @@ class Storage {
       }
     }
   
-    getAllKeys() {
+    getAllKeys(): string[] {
       try {
         return Object.keys(this.storage);
       } catch (error) {
@@ -116,7 +59,7 @@ class Storage {
       }
     }
   
-    hasItem(key) {
+    hasItem(key: string): boolean {
       try {
         return this.storage.getItem(key) !== null;
       } catch (error) {
@@ -125,7 +68,7 @@ class Storage {
       }
     }
   
-    length() {
+    length(): number {
       try {
         return this.storage.length;
       } catch (error) {
@@ -135,16 +78,15 @@ class Storage {
     }
   }
   
-  /**
-   * SessionStorage implementation of the Storage interface
-   */
-  class SessionStorage extends Storage {
+  export class SessionStorage extends Storage {
+    private storage: globalThis.Storage;
+  
     constructor() {
       super();
       this.storage = window.sessionStorage;
     }
   
-    getItem(key) {
+    getItem<T = unknown>(key: string): T | null {
       try {
         const item = this.storage.getItem(key);
         return item ? JSON.parse(item) : null;
@@ -154,7 +96,7 @@ class Storage {
       }
     }
   
-    setItem(key, value) {
+    setItem<T = unknown>(key: string, value: T): void {
       try {
         this.storage.setItem(key, JSON.stringify(value));
       } catch (error) {
@@ -162,7 +104,7 @@ class Storage {
       }
     }
   
-    removeItem(key) {
+    removeItem(key: string): void {
       try {
         this.storage.removeItem(key);
       } catch (error) {
@@ -170,7 +112,7 @@ class Storage {
       }
     }
   
-    clear() {
+    clear(): void {
       try {
         this.storage.clear();
       } catch (error) {
@@ -178,7 +120,7 @@ class Storage {
       }
     }
   
-    getAllKeys() {
+    getAllKeys(): string[] {
       try {
         return Object.keys(this.storage);
       } catch (error) {
@@ -187,7 +129,7 @@ class Storage {
       }
     }
   
-    hasItem(key) {
+    hasItem(key: string): boolean {
       try {
         return this.storage.getItem(key) !== null;
       } catch (error) {
@@ -196,7 +138,7 @@ class Storage {
       }
     }
   
-    length() {
+    length(): number {
       try {
         return this.storage.length;
       } catch (error) {
@@ -207,41 +149,45 @@ class Storage {
   }
   
   /**
-   * In-memory storage implementation (useful for testing or SSR)
+   * MemoryStorage implementation of the Storage interface
+   * Useful for testing or server-side rendering
    */
-  class MemoryStorage extends Storage {
+  export class MemoryStorage extends Storage {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    private storage: Map<string, any>;
+  
     constructor() {
       super();
       this.storage = new Map();
     }
   
-    getItem(key) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    getItem<T = any>(key: string): T | null {
       return this.storage.get(key) || null;
     }
   
-    setItem(key, value) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    setItem<T = any>(key: string, value: T): void {
       this.storage.set(key, value);
     }
   
-    removeItem(key) {
+    removeItem(key: string): void {
       this.storage.delete(key);
     }
   
-    clear() {
+    clear(): void {
       this.storage.clear();
     }
   
-    getAllKeys() {
+    getAllKeys(): string[] {
       return Array.from(this.storage.keys());
     }
   
-    hasItem(key) {
+    hasItem(key: string): boolean {
       return this.storage.has(key);
     }
   
-    length() {
+    length(): number {
       return this.storage.size;
     }
   }
-  
-  export { Storage, LocalStorage, SessionStorage, MemoryStorage };
