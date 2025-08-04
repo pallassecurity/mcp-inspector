@@ -1,5 +1,5 @@
 import { BrowserCSVLoader } from "./csv";
-import {  PallasTool } from "./index";
+import { PallasTool } from "./index";
 import {
   useCallback,
   useEffect,
@@ -48,10 +48,13 @@ class StorageManager {
   private STORAGE_KEY = "__INSPECTOR_BULK_TOOL_CALLS";
   private historyTests: StoredTestTool[][] = [];
   private STORAGE_LIMIT = 3;
+  private isLoaded = false;
 
   constructor(private storage: Storage) {}
 
   async loadSaved(): Promise<void> {
+    if (this.isLoaded) return;
+    
     const saved = this.storage.getItem(this.STORAGE_KEY);
     if (saved) {
       try {
@@ -62,6 +65,7 @@ class StorageManager {
         this.historyTests = [];
       }
     }
+    this.isLoaded = true;
   }
 
   getHistoryTests(): PallasTool[][] {
@@ -70,9 +74,7 @@ class StorageManager {
     );
   }
 
-  private convertStoredToolToPallasTool(
-    storedTool: StoredTestTool,
-  ): PallasTool {
+  private convertStoredToolToPallasTool(storedTool: StoredTestTool): PallasTool {
     const [server, ...toolParts] = storedTool.name.split("-");
     const toolName = toolParts.join("-");
 
@@ -116,9 +118,17 @@ class StorageManager {
 class StorageStore {
   private listeners: Set<() => void> = new Set();
   private cachedSnapshot: PallasTool[][] = [];
+  private isInitialized = false;
 
-  constructor(private storageManager: StorageManager) {
+  constructor(private storageManager: StorageManager) {}
+
+  async initialize(): Promise<void> {
+    if (this.isInitialized) return;
+    
+    await this.storageManager.loadSaved();
     this.cachedSnapshot = this.storageManager.getHistoryTests();
+    this.isInitialized = true;
+    this.notifyListeners();
   }
 
   subscribe = (listener: () => void) => {
@@ -151,16 +161,25 @@ class StorageStore {
 
 const storage = new LocalStorage();
 const storageManager = new StorageManager(storage);
-
-await storageManager.loadSaved();
 const storageStore = new StorageStore(storageManager);
 
 function useStorageManager() {
+  const [isStorageLoaded, setIsStorageLoaded] = useState(false);
+  
   const historyTests = useSyncExternalStore(
     storageStore.subscribe,
     storageStore.getSnapshot,
     storageStore.getServerSnapshot,
   );
+
+  useEffect(() => {
+    const initializeStorage = async () => {
+      await storageStore.initialize();
+      setIsStorageLoaded(true);
+    };
+    
+    initializeStorage();
+  }, []);
 
   const storeTests = useCallback(async (map: TestCaseMap) => {
     await storageStore.storeLastTests(map);
@@ -169,12 +188,13 @@ function useStorageManager() {
   return {
     historyTests,
     storeTests,
+    isStorageLoaded,
   };
 }
 
 interface TestTabProps {
   tools: Tool[];
-  callTool: (toolName: string, args: unknown) => Promise<unknown>;
+  callTool: (toolName: string, args: Record<string, unknown>) => Promise<void>;
   isConnected: boolean;
 }
 
@@ -182,7 +202,7 @@ const TestTab = ({ tools, callTool }: TestTabProps) => {
   const [myCategories, setMyCategories] = useState<Category[]>([]);
   const [isDataLoaded, setIsDataLoaded] = useState(false);
   const [fileUploadError, setFileUploadError] = useState<string | null>(null);
-  const { historyTests, storeTests } = useStorageManager();
+  const { historyTests, storeTests, isStorageLoaded } = useStorageManager();
 
   const handleFileUpload = useCallback(
     async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -207,21 +227,25 @@ const TestTab = ({ tools, callTool }: TestTabProps) => {
     [],
   );
 
-  const handleRunTests = useCallback(async (data: TestSelection[]) => {
-    const testCases = testCaseManager.getTestCases() || new Map();
-    const filter = filterTestCases(data, testCases);
+  const handleRunTests = useCallback(
+    async (data: TestSelection[]) => {
+      const testCases = testCaseManager.getTestCases() || new Map();
+      const filter = filterTestCases(data, testCases);
 
-    for (const [name, tool] of filter.entries()) {
-      console.info("calling tool: " + name);
-      callTool(name, tool.arguments);
-    }
+      for (const [name, tool] of filter.entries()) {
+        console.info("calling tool: " + name);
+        //@ts-expect-error PallasTool
+        callTool(name, tool.arguments);
+      }
 
-    await storeTests(filter);
-  }, [callTool, storeTests]);
+      await storeTests(filter);
+    },
+    [callTool, storeTests],
+  );
 
   const memoTests = useMemo(() => {
-    return historyTests.length > 0 ? historyTests : [];
-  }, [historyTests]);
+    return isStorageLoaded && historyTests.length > 0 ? historyTests : [];
+  }, [historyTests, isStorageLoaded]);
 
   useEffect(() => {
     if (isDataLoaded) {
@@ -233,6 +257,7 @@ const TestTab = ({ tools, callTool }: TestTabProps) => {
     async (arr: Pick<PallasTool, "arguments" | "name">[]): Promise<void> => {
       const promises = arr.map(async (testTool) => {
         console.info("calling tool: " + testTool.name);
+        //@ts-expect-error PallasTool
         const res = await callTool(testTool.name, testTool.arguments);
         return res;
       });
@@ -245,7 +270,6 @@ const TestTab = ({ tools, callTool }: TestTabProps) => {
 
   const handlePastTestClick = useCallback(
     (pastTests: PallasTool[]) => {
-      console.log(pastTests);
       memoCallTools(pastTests);
     },
     [memoCallTools],
