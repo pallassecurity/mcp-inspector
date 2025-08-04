@@ -60,12 +60,6 @@ const getCategoryState = (items: Record<string, boolean>, enabledTests: Map<stri
     return 'partial';
 };
 
-const getTotalSelected = (data: SelectionData): number => {
-    return Object.values(data).reduce((total, categoryData) => {
-        return total + Object.values(categoryData.items).filter(Boolean).length;
-    }, 0);
-};
-
 const getSelectedTests = (data: SelectionData, enabledTests?: Map<string, PallasTool>): SelectedTest[] => {
     const selected: SelectedTest[] = [];
     Object.entries(data).forEach(([categoryName, categoryData]) => {
@@ -144,7 +138,7 @@ const isTestEnabled = (enabledTests: Map<string, PallasTool> | undefined, catego
     const toolKey = `${categoryName}-${testName}`;
     if (enabledTests.has(toolKey)) return true;
     
-    for (const [key, tool] of enabledTests) {
+    for (const tool of enabledTests.values()) {
         if (tool.isSameTool(testName) || tool.isSameTool(toolKey)) {
             return true;
         }
@@ -264,13 +258,12 @@ const useSearch = () => {
 };
 
 interface SearchBarProps {
-    categoryName: string;
     totalItems: number;
     searchTerm: string;
     onSearchChange: (term: string) => void;
 }
 
-const SearchBar: React.FC<SearchBarProps> = ({ categoryName, totalItems, searchTerm, onSearchChange }) => (
+const SearchBar: React.FC<SearchBarProps> = ({ totalItems, searchTerm, onSearchChange }) => (
     <div className="flex-1 relative">
         <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-gray-500" />
         <input
@@ -457,7 +450,6 @@ const CategorySection: React.FC<CategorySectionProps> = ({
                 <div className="bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700">
                     <div className="p-4 border-b border-gray-200 dark:border-gray-700 bg-gray-25 dark:bg-gray-800">
                         <SearchBar
-                            categoryName={categoryName}
                             totalItems={Object.keys(categoryData.items).length}
                             searchTerm={searchTerm}
                             onSearchChange={(term) => onSearchChange(categoryName, term)}
@@ -527,10 +519,6 @@ const SelectionSummary: React.FC<SelectionSummaryProps> = ({ totalSelected, sele
     </div>
 );
 
-/**
- * MultiLevelSelector - A comprehensive test selection interface
- * Manages hierarchical test categories with search, filtering, and batch operations
- */
 const MultiLevelSelector: React.FC<TestSelectorProps> = ({ categories, enabledTests, onRunTests }) => {
     const [isRunning, setIsRunning] = useState(false);
 
@@ -568,7 +556,7 @@ const MultiLevelSelector: React.FC<TestSelectorProps> = ({ categories, enabledTe
 
     const handleSelectCategory = useCallback((categoryName: string) => {
         selection.selectCategory(categoryName, enabledTests);
-    }, [selection.selectCategory, enabledTests]);
+    }, [selection, enabledTests]);
 
     return (
         <div className="max-w-4xl mx-auto p-6 bg-white dark:bg-gray-900">

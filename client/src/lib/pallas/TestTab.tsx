@@ -15,22 +15,51 @@ import { PastTests } from "./PastTests";
 import { MultiLevelSelector } from "./MultiLevelSelector";
 import { TabsContent } from "@/components/ui/tabs";
 
+interface TestSelection {
+  category: string;
+  test: string;
+}
+
+interface CategoryItem {
+  name: string;
+}
+
+interface Category {
+  name: string;
+  expanded: boolean;
+  items: CategoryItem[];
+}
+
+type TestCaseMap = Map<string, PallasTool>;
+
+interface StoredTestTool {
+  name: string;
+  arguments: unknown;
+}
+
 const csvLoader = new BrowserCSVLoader();
 
-const created = PallasService.create(
-  new TestCaseManager({ csvLoader, dataSource: "testCases.csv" }), // dataSource now just used as identifier
-);
+// Assuming TestCaseManager implements MethodExposer interface
+const testCaseManager = new TestCaseManager({ 
+  csvLoader, 
+  dataSource: "testCases.csv" 
+}) as TestCaseManager & { 
+  exposesMethods: string[];
+  loadTestParameters: () => Promise<void>;
+  getTestCases: () => TestCaseMap;
+};
+
+const created = PallasService.create(testCaseManager);
 created.loadTestParameters();
 
-// Keep StorageManager clean - no React-specific code
 class StorageManager {
   private STORAGE_KEY = "remember";
-  private historyTests: PallasTool[][] = [];
+  private historyTests: StoredTestTool[][] = [];
   private STORAGE_LIMIT = 3;
 
   constructor(private storage: Storage) {}
 
-  async loadSaved() {
+  async loadSaved(): Promise<void> {
     const saved = this.storage.getItem(this.STORAGE_KEY);
     if (saved) {
       try {
@@ -44,19 +73,32 @@ class StorageManager {
   }
 
   getHistoryTests(): PallasTool[][] {
-    return [...this.historyTests]; // Return a copy to prevent direct mutations
+    return this.historyTests.map(testArray => 
+      testArray.map(tool => this.convertStoredToolToPallasTool(tool))
+    );
   }
 
-  private formatSelectedForStorage(map) {
-    const data = [];
-    for (const [fullName, pallasTool] of map.entries()) {
+  private convertStoredToolToPallasTool(storedTool: StoredTestTool): PallasTool {
+    const [server, ...toolParts] = storedTool.name.split('-');
+    const toolName = toolParts.join('-');
+    
+    return new PallasTool({
+      server,
+      toolName,
+      args: storedTool.arguments,
+    });
+  }
+
+  private formatSelectedForStorage(map: TestCaseMap): StoredTestTool[] {
+    const data: StoredTestTool[] = [];
+    for (const [, pallasTool] of map.entries()) {
       const out = pallasTool.getToStorage();
       data.push(out);
     }
     return data;
   }
 
-  async storeLastTests(map) {
+  async storeLastTests(map: TestCaseMap): Promise<void> {
     this.historyTests.push(this.formatSelectedForStorage(map));
 
     if (this.historyTests.length > this.STORAGE_LIMIT) {
@@ -77,7 +119,6 @@ class StorageManager {
   }
 }
 
-// Separate store adapter for React integration
 class StorageStore {
   private listeners: Set<() => void> = new Set();
   private cachedSnapshot: PallasTool[][] = [];
@@ -101,29 +142,25 @@ class StorageStore {
     return [];
   };
 
-  async storeLastTests(map) {
+  async storeLastTests(map: TestCaseMap): Promise<void> {
     await this.storageManager.storeLastTests(map);
-    // Update cached snapshot
     this.cachedSnapshot = this.storageManager.getHistoryTests();
     this.notifyListeners();
   }
 
-  private notifyListeners() {
-    // Defer to next tick to avoid update loops
+  private notifyListeners(): void {
     setTimeout(() => {
       this.listeners.forEach((listener) => listener());
     }, 0);
   }
 }
 
-// Create instances
 const storage = new LocalStorage();
 const storageManager = new StorageManager(storage);
 
 await storageManager.loadSaved();
 const storageStore = new StorageStore(storageManager);
 
-// Custom hook using useSyncExternalStore with the separate store
 function useStorageManager() {
   const historyTests = useSyncExternalStore(
     storageStore.subscribe,
@@ -131,7 +168,7 @@ function useStorageManager() {
     storageStore.getServerSnapshot,
   );
 
-  const storeTests = useCallback(async (map) => {
+  const storeTests = useCallback(async (map: TestCaseMap) => {
     await storageStore.storeLastTests(map);
   }, []);
 
@@ -143,17 +180,16 @@ function useStorageManager() {
 
 interface TestTabProps {
   tools: Tool[];
-  callTool: (toolName: string, args) => Promise<any>;
+  callTool: (toolName: string, args: unknown) => Promise<unknown>;
   isConnected: boolean;
 }
 
 const TestTab = ({ tools, callTool }: TestTabProps) => {
-  const [myCategories, setMyCategories] = useState<any>([]);
+  const [myCategories, setMyCategories] = useState<Category[]>([]);
   const [isDataLoaded, setIsDataLoaded] = useState(false);
   const [fileUploadError, setFileUploadError] = useState<string | null>(null);
   const { historyTests, storeTests } = useStorageManager();
 
-  // File upload handler
   const handleFileUpload = useCallback(
     async (event: React.ChangeEvent<HTMLInputElement>) => {
       const file = event.target.files?.[0];
@@ -162,23 +198,20 @@ const TestTab = ({ tools, callTool }: TestTabProps) => {
       try {
         setFileUploadError(null);
 
-        // Load CSV data using BrowserCSVLoader
         await csvLoader.loadFromFile(file);
-
-        // Now load test parameters
         await created.loadTestParameters();
 
         setIsDataLoaded(true);
       } catch (error) {
         console.error("Failed to load CSV file:", error);
-        setFileUploadError(`Failed to load CSV: ${error.message}`);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        setFileUploadError(`Failed to load CSV: ${errorMessage}`);
         setIsDataLoaded(false);
       }
     },
     [],
   );
 
-  // Now memoTests uses the live historyTests from useSyncExternalStore
   const memoTests = useMemo(() => {
     return historyTests.length > 0 ? historyTests : [];
   }, [historyTests]);
@@ -190,25 +223,24 @@ const TestTab = ({ tools, callTool }: TestTabProps) => {
   }, [tools, isDataLoaded]);
 
   const memoCallTools = useCallback(
-    async (arr: Pick<PallasTool, "arguments" | "name">[]) => {
-      const b = arr.map(async (testTool) => {
+    async (arr: Pick<PallasTool, "arguments" | "name">[]): Promise<void> => {
+      const promises = arr.map(async (testTool) => {
         console.info("calling tool: " + testTool.name);
         const res = await callTool(testTool.name, testTool.arguments);
-
         return res;
       });
 
-      await Promise.all(b);
-      console.info(`done all ${b.length} calls`);
+      await Promise.all(promises);
+      console.info(`done all ${promises.length} calls`);
     },
-    [],
+    [callTool],
   );
 
-  const handlePastTestClick = (pastTests) => {
+  const handlePastTestClick = useCallback((pastTests: PallasTool[]) => {
     console.log(pastTests);
-
     memoCallTools(pastTests);
-  };
+  }, [memoCallTools]);
+
   return (
     <TabsContent value="test">
       {!isDataLoaded && (
@@ -238,12 +270,13 @@ const TestTab = ({ tools, callTool }: TestTabProps) => {
           {myCategories && (
             <MultiLevelSelector
               categories={myCategories}
-              enabledTests={created.getTestCases()}
-              onRunTests={async (data) => {
+              enabledTests={created.getTestCases() || new Map()}
+              onRunTests={async (data: TestSelection[]) => {
                 console.log(data);
                 console.log(created.getTestCases());
 
-                const filter = filterTestCases(data, created.getTestCases());
+                const testCases = created.getTestCases() || new Map();
+                const filter = filterTestCases(data, testCases);
                 console.log(filter);
                 console.info("run these");
 
@@ -262,12 +295,12 @@ const TestTab = ({ tools, callTool }: TestTabProps) => {
   );
 };
 
-function parsedToolForSelector(tools: Tool[]) {
+function parsedToolForSelector(tools: Tool[]): Category[] {
   const delimiter = "-";
-  let firstDelimiter;
-  const map = new Map();
+  let firstDelimiter: number;
+  const map = new Map<string, Category>();
 
-  function ensureCategory(category?: string) {
+  function ensureCategory(category?: string): Category {
     if (!category) category = "uncategorized";
     if (!map.has(category)) {
       map.set(category, {
@@ -276,7 +309,7 @@ function parsedToolForSelector(tools: Tool[]) {
         items: [],
       });
     }
-    return map.get(category);
+    return map.get(category)!;
   }
 
   for (const tool of tools) {
@@ -285,7 +318,7 @@ function parsedToolForSelector(tools: Tool[]) {
     if (firstDelimiter === -1) {
       const category = ensureCategory();
       category.items.push({
-        name: tool,
+        name: tool.name,
       });
     } else {
       const category = ensureCategory(tool.name.substring(0, firstDelimiter));
@@ -298,19 +331,22 @@ function parsedToolForSelector(tools: Tool[]) {
   return [...map.values()];
 }
 
-function filterTestCases(declaration, available) {
+function filterTestCases(declaration: TestSelection[], available: TestCaseMap): TestCaseMap {
   console.log({
     declaration,
     available,
   });
 
-  const map = new Map();
+  const map: TestCaseMap = new Map();
   for (const selected of declaration) {
     const key = `${selected.category}-${selected.test}`;
     console.debug("checking", key, available.has(key));
     if (available.has(key)) {
       console.info("has " + key);
-      map.set(key, available.get(key));
+      const tool = available.get(key);
+      if (tool) {
+        map.set(key, tool);
+      }
     }
   }
 
