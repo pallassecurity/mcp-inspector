@@ -1,7 +1,7 @@
-import { MethodExposer, PallasTool } from "./index.js";
+import { PallasTool } from "./index.js";
 import { CSVLoader } from "./csv.js";
 
-interface ITestCaseManagerConfig {
+interface TestCaseManagerConfig {
   csvLoader?: CSVLoader;
   dataSource?: string;
 }
@@ -20,22 +20,14 @@ interface TestResults {
   error?: string;
 }
 
-class TestCaseManager implements MethodExposer {
-  static readonly exposesMethods = [
-    "loadTestParameters",
-    "getTestCases",
-  ] as const;
-
-  //@ts-expect-error read only
-  readonly exposesMethods = TestCaseManager.exposesMethods;
+class TestCaseManager {
   private testCases: Map<string, PallasTool> | undefined;
   private csvLoader: CSVLoader;
   private dataSource: string;
 
-  constructor(config: ITestCaseManagerConfig = {}) {
+  constructor(config: TestCaseManagerConfig = {}) {
     if (!config.csvLoader) throw Error("no config");
     if (!config.dataSource) throw Error("no datasource");
-
     this.csvLoader = config.csvLoader;
     this.dataSource = config.dataSource;
   }
@@ -67,4 +59,4 @@ class TestCaseManager implements MethodExposer {
 }
 
 export { TestCaseManager };
-export type { ITestCaseManagerConfig, TestParameters, TestConfig, TestResults };
+export type { TestCaseManagerConfig as ITestCaseManagerConfig, TestParameters, TestConfig, TestResults };

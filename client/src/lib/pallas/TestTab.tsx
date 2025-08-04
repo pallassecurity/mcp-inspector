@@ -1,5 +1,5 @@
 import { BrowserCSVLoader } from "./csv";
-import { PallasService, PallasTool } from "./index";
+import {  PallasTool } from "./index";
 import {
   useCallback,
   useEffect,
@@ -39,17 +39,10 @@ interface StoredTestTool {
 
 const csvLoader = new BrowserCSVLoader();
 
-const testCaseManager = new TestCaseManager({ 
-  csvLoader, 
-  dataSource: "testCases.csv" 
-}) as TestCaseManager & { 
-  exposesMethods: string[];
-  loadTestParameters: () => Promise<void>;
-  getTestCases: () => TestCaseMap;
-};
-
-const created = PallasService.create(testCaseManager);
-created.loadTestParameters();
+const testCaseManager = new TestCaseManager({
+  csvLoader,
+  dataSource: "testCases.csv",
+});
 
 class StorageManager {
   private STORAGE_KEY = "__INSPECTOR_BULK_TOOL_CALLS";
@@ -72,15 +65,17 @@ class StorageManager {
   }
 
   getHistoryTests(): PallasTool[][] {
-    return this.historyTests.map(testArray => 
-      testArray.map(tool => this.convertStoredToolToPallasTool(tool))
+    return this.historyTests.map((testArray) =>
+      testArray.map((tool) => this.convertStoredToolToPallasTool(tool)),
     );
   }
 
-  private convertStoredToolToPallasTool(storedTool: StoredTestTool): PallasTool {
-    const [server, ...toolParts] = storedTool.name.split('-');
-    const toolName = toolParts.join('-');
-    
+  private convertStoredToolToPallasTool(
+    storedTool: StoredTestTool,
+  ): PallasTool {
+    const [server, ...toolParts] = storedTool.name.split("-");
+    const toolName = toolParts.join("-");
+
     return new PallasTool({
       server,
       toolName,
@@ -198,18 +193,31 @@ const TestTab = ({ tools, callTool }: TestTabProps) => {
         setFileUploadError(null);
 
         await csvLoader.loadFromFile(file);
-        await created.loadTestParameters();
+        await testCaseManager.loadTestParameters();
 
         setIsDataLoaded(true);
       } catch (error) {
         console.error("Failed to load CSV file:", error);
-        const errorMessage = error instanceof Error ? error.message : String(error);
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
         setFileUploadError(`Failed to load CSV: ${errorMessage}`);
         setIsDataLoaded(false);
       }
     },
     [],
   );
+
+  const handleRunTests = useCallback(async (data: TestSelection[]) => {
+    const testCases = testCaseManager.getTestCases() || new Map();
+    const filter = filterTestCases(data, testCases);
+
+    for (const [name, tool] of filter.entries()) {
+      console.info("calling tool: " + name);
+      callTool(name, tool.arguments);
+    }
+
+    await storeTests(filter);
+  }, [callTool, storeTests]);
 
   const memoTests = useMemo(() => {
     return historyTests.length > 0 ? historyTests : [];
@@ -235,10 +243,13 @@ const TestTab = ({ tools, callTool }: TestTabProps) => {
     [callTool],
   );
 
-  const handlePastTestClick = useCallback((pastTests: PallasTool[]) => {
-    console.log(pastTests);
-    memoCallTools(pastTests);
-  }, [memoCallTools]);
+  const handlePastTestClick = useCallback(
+    (pastTests: PallasTool[]) => {
+      console.log(pastTests);
+      memoCallTools(pastTests);
+    },
+    [memoCallTools],
+  );
 
   return (
     <TabsContent value="test">
@@ -269,23 +280,8 @@ const TestTab = ({ tools, callTool }: TestTabProps) => {
           {myCategories && (
             <MultiLevelSelector
               categories={myCategories}
-              enabledTests={created.getTestCases() || new Map()}
-              onRunTests={async (data: TestSelection[]) => {
-                console.log(data);
-                console.log(created.getTestCases());
-
-                const testCases = created.getTestCases() || new Map();
-                const filter = filterTestCases(data, testCases);
-                console.log(filter);
-                console.info("run these");
-
-                for (const [name, tool] of filter.entries()) {
-                  console.info("calling tool: " + name);
-                  callTool(name, tool.arguments);
-                }
-
-                await storeTests(filter);
-              }}
+              enabledTests={testCaseManager.getTestCases() || new Map()}
+              onRunTests={handleRunTests}
             />
           )}
         </>
@@ -330,12 +326,10 @@ function parsedToolForSelector(tools: Tool[]): Category[] {
   return [...map.values()];
 }
 
-function filterTestCases(declaration: TestSelection[], available: TestCaseMap): TestCaseMap {
-  console.log({
-    declaration,
-    available,
-  });
-
+function filterTestCases(
+  declaration: TestSelection[],
+  available: TestCaseMap,
+): TestCaseMap {
   const map: TestCaseMap = new Map();
   for (const selected of declaration) {
     const key = `${selected.category}-${selected.test}`;
