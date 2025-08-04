@@ -233,6 +233,103 @@ export class WebCSVLoader implements CSVLoader {
     }
 }
 
+/**
+ * Browser file upload CSV loader for client-side file processing
+ * Uses File API with Papa Parse for robust CSV parsing
+ */
+class BrowserCSVLoader implements CSVLoader {
+    private csvData: ITestCaseRow[] | null = null;
+
+    /**
+     * Load CSV from uploaded File object
+     */
+    async loadFromFile(file: File): Promise<ITestCaseRow[]> {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            
+            reader.onload = (event) => {
+                try {
+                    const csvText = event.target?.result as string;
+                    // Use Papa Parse for robust parsing (if available)
+                    // Otherwise fall back to simple parsing
+                    if (typeof window !== 'undefined' && (window as any).Papa) {
+                        const parsed = (window as any).Papa.parse(csvText, {
+                            header: true,
+                            dynamicTyping: true,
+                            skipEmptyLines: true,
+                            delimitersToGuess: [',', '\t', '|', ';']
+                        });
+                        this.csvData = parsed.data;
+                        resolve(parsed.data);
+                    } else {
+                        this.csvData = this.parseCSVText(csvText);
+                        resolve(this.csvData);
+                    }
+                } catch (error) {
+                    reject(new Error(`Failed to parse CSV: ${error.message}`));
+                }
+            };
+            
+            reader.onerror = () => reject(new Error('Failed to read file'));
+            reader.readAsText(file);
+        });
+    }
+
+    async loadCSV(source: string): Promise<ITestCaseRow[]> {
+        if (!this.csvData) {
+            throw new Error('No CSV file uploaded. Use loadFromFile() first.');
+        }
+        return this.csvData;
+    }
+
+    private parseCSVText(csvText: string): ITestCaseRow[] {
+        const lines = csvText.trim().split('\n');
+        if (lines.length === 0) return [];
+
+        const headers = this.parseCSVLine(lines[0]).map(h => h.trim());
+        const rows: ITestCaseRow[] = [];
+
+        for (let i = 1; i < lines.length; i++) {
+            const values = this.parseCSVLine(lines[i]);
+            const row: any = {};
+
+            headers.forEach((header, index) => {
+                row[header] = values[index]?.trim() || '';
+            });
+
+            rows.push(row);
+        }
+
+        return rows;
+    }
+
+    private parseCSVLine(line: string): string[] {
+        const result: string[] = [];
+        let current = '';
+        let inQuotes = false;
+
+        for (let i = 0; i < line.length; i++) {
+            const char = line[i];
+            const nextChar = line[i + 1];
+
+            if (char === '"' && inQuotes && nextChar === '"') {
+                current += '"';
+                i++;
+            } else if (char === '"') {
+                inQuotes = !inQuotes;
+            } else if (char === ',' && !inQuotes) {
+                result.push(current);
+                current = '';
+            } else {
+                current += char;
+            }
+        }
+
+        result.push(current);
+        return result;
+    }
+}
+
 
 export type { CSVLoader }
-export { FileSystemCSVLoader, BundlerCSVLoader, StaticBundlerCSVLoader }
+export { FileSystemCSVLoader, BundlerCSVLoader, StaticBundlerCSVLoader, BrowserCSVLoader }

@@ -1,4 +1,4 @@
-import { StaticBundlerCSVLoader } from "@/lib/pallas/lib/csv";
+import { BrowserCSVLoader, StaticBundlerCSVLoader } from "@/lib/pallas/lib/csv";
 import { MultiLevelSelector } from "./MultiLevelSelector";
 import { TabsContent } from "./ui/tabs";
 import { TestCaseManager } from "@/lib/pallas/testManager";
@@ -12,16 +12,14 @@ import {
 } from "react";
 import { Tool } from "@/lib/pallas-sdk";
 import { LocalStorage, Storage } from "@/lib/pallas/lib/storage";
+//import { LocalStorage, Storage } from "@pallassecurity/pallas-typescript";
+
 import { PastTests } from "./PastTests";
 
-const csvLoader = new StaticBundlerCSVLoader();
-csvLoader.registerImport(
-  "../data/testCases.csv",
-  () => import("../data/testCases.csv"),
-);
+const csvLoader = new BrowserCSVLoader();
 
 const created = PallasService.create(
-  new TestCaseManager({ csvLoader, dataSource: "../data/testCases.csv" }),
+  new TestCaseManager({ csvLoader, dataSource: "testCases.csv" }), // dataSource now just used as identifier
 );
 created.loadTestParameters();
 
@@ -152,7 +150,34 @@ interface TestTabProps {
 
 const TestTab = ({ tools, callTool }: TestTabProps) => {
   const [myCategories, setMyCategories] = useState<any>([]);
+  const [isDataLoaded, setIsDataLoaded] = useState(false);
+  const [fileUploadError, setFileUploadError] = useState<string | null>(null);
   const { historyTests, storeTests } = useStorageManager();
+
+  // File upload handler
+  const handleFileUpload = useCallback(
+    async (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+
+      try {
+        setFileUploadError(null);
+
+        // Load CSV data using BrowserCSVLoader
+        await csvLoader.loadFromFile(file);
+
+        // Now load test parameters
+        await created.loadTestParameters();
+
+        setIsDataLoaded(true);
+      } catch (error) {
+        console.error("Failed to load CSV file:", error);
+        setFileUploadError(`Failed to load CSV: ${error.message}`);
+        setIsDataLoaded(false);
+      }
+    },
+    [],
+  );
 
   // Now memoTests uses the live historyTests from useSyncExternalStore
   const memoTests = useMemo(() => {
@@ -165,8 +190,10 @@ const TestTab = ({ tools, callTool }: TestTabProps) => {
   }, [historyTests]);
 
   useEffect(() => {
-    setMyCategories(parsedToolForSelector(tools));
-  }, [tools]);
+    if (isDataLoaded) {
+      setMyCategories(parsedToolForSelector(tools));
+    }
+  }, [tools, isDataLoaded]);
 
   const memoCallTools = useCallback(
     async (arr: Pick<PallasTool, "arguments" | "name">[]) => {
@@ -178,7 +205,7 @@ const TestTab = ({ tools, callTool }: TestTabProps) => {
       });
 
       await Promise.all(b);
-      console.info(`done all ${b.length} calls`)
+      console.info(`done all ${b.length} calls`);
     },
     [],
   );
@@ -190,28 +217,50 @@ const TestTab = ({ tools, callTool }: TestTabProps) => {
   };
   return (
     <TabsContent value="test">
-      <PastTests history={memoTests} onTestsClick={handlePastTestClick} />
-      {myCategories && (
-        <MultiLevelSelector
-          categories={myCategories}
-          enabledTests={created.getTestCases()}
-          onRunTests={async (data) => {
-            console.log(data);
-            console.log(created.getTestCases());
+      {!isDataLoaded && (
+        <div className="mb-4 p-4 border-2 border-dashed border-gray-300 rounded-lg">
+          <label
+            htmlFor="csv-upload"
+            className="block text-sm font-medium mb-2"
+          >
+            Upload Test Cases CSV
+          </label>
+          <input
+            id="csv-upload"
+            type="file"
+            accept=".csv"
+            onChange={handleFileUpload}
+            className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+          />
+          {fileUploadError && (
+            <p className="mt-2 text-sm text-red-600">{fileUploadError}</p>
+          )}
+        </div>
+      )}
 
-            const filter = filterTestCases(data, created.getTestCases());
-            console.log(filter);
-            console.info("run these");
+      {isDataLoaded && (
+        <>
+          <PastTests history={memoTests} onTestsClick={handlePastTestClick} />
+          {myCategories && (
+            <MultiLevelSelector
+              categories={myCategories}
+              enabledTests={created.getTestCases()}
+              onRunTests={async (data) => {
+                console.log(data);
+                console.log(created.getTestCases());
 
-            for (const [name, tool] of filter.entries()) {
-              console.info("calling tool: " + name);
-              callTool(name, tool.arguments);
-            }
+                const filter = filterTestCases(data, created.getTestCases());
+                console.log(filter);
+                console.info("run these");
 
-            // Use the hook's storeTests method which will automatically update React state
-            await storeTests(filter);
-          }}
-        />
+                for (const [name, tool] of filter.entries()) {
+                  console.info("calling tool: " + name);
+                  callTool(name, tool.arguments);
+                }
+              }}
+            />
+          )}
+        </>
       )}
     </TabsContent>
   );
