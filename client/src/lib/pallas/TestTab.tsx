@@ -1,5 +1,3 @@
-import { BrowserCSVLoader } from "./csv";
-import { PallasTool } from "./index";
 import {
   useCallback,
   useEffect,
@@ -7,42 +5,28 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { LocalStorage, Storage } from "./storage";
-
-import { PastTests } from "./PastTests";
-import { MultiLevelSelector } from "./MultiLevelSelector";
-import { TabsContent } from "@/components/ui/tabs";
 import { Tool } from "@modelcontextprotocol/sdk/types.js";
+import { TabsContent } from "@/components/ui/tabs";
+
+import { BrowserCSVLoader } from "./csv";
+import { TestableTool } from "./index";
+import { LocalStorage, Storage } from "./storage";
 import { TestCaseManager } from "./TestCaseManager";
+import { PastTests } from "./PastTests";
+import { FlatTestSelector, SelectedTest } from "./FlatTestSelector";
 
-interface TestSelection {
-  category: string;
-  test: string;
-}
+type TestCaseMap = Map<string, TestableTool>;
 
-interface CategoryItem {
+type StoredTestTool = {
   name: string;
+  arguments: Record<string, unknown>;
+};
+
+interface TestTabProps {
+  tools: Tool[];
+  callTool: (toolName: string, args: Record<string, unknown>) => Promise<void>;
+  isConnected: boolean;
 }
-
-interface Category {
-  name: string;
-  expanded: boolean;
-  items: CategoryItem[];
-}
-
-type TestCaseMap = Map<string, PallasTool>;
-
-interface StoredTestTool {
-  name: string;
-  arguments: unknown;
-}
-
-const csvLoader = new BrowserCSVLoader();
-
-const testCaseManager = new TestCaseManager({
-  csvLoader,
-  dataSource: "testCases.csv",
-});
 
 class StorageManager {
   private STORAGE_KEY = "__INSPECTOR_BULK_TOOL_CALLS";
@@ -54,7 +38,7 @@ class StorageManager {
 
   async loadSaved(): Promise<void> {
     if (this.isLoaded) return;
-    
+
     const saved = this.storage.getItem(this.STORAGE_KEY);
     if (saved) {
       try {
@@ -68,28 +52,24 @@ class StorageManager {
     this.isLoaded = true;
   }
 
-  getHistoryTests(): PallasTool[][] {
+  getHistoryTests(): TestableTool[][] {
     return this.historyTests.map((testArray) =>
-      testArray.map((tool) => this.convertStoredToolToPallasTool(tool)),
+      testArray.map((storedTool) => 
+        new TestableTool({
+          toolName: storedTool.name,
+          args: storedTool.arguments,
+        })
+      ),
     );
-  }
-
-  private convertStoredToolToPallasTool(storedTool: StoredTestTool): PallasTool {
-    const [server, ...toolParts] = storedTool.name.split("-");
-    const toolName = toolParts.join("-");
-
-    return new PallasTool({
-      server,
-      toolName,
-      args: storedTool.arguments,
-    });
   }
 
   private formatSelectedForStorage(map: TestCaseMap): StoredTestTool[] {
     const data: StoredTestTool[] = [];
-    for (const [, pallasTool] of map.entries()) {
-      const out = pallasTool.getToStorage();
-      data.push(out);
+    for (const [, testableTool] of map.entries()) {
+      data.push({
+        name: testableTool.name,
+        arguments: testableTool.arguments as Record<string, unknown>,
+      });
     }
     return data;
   }
@@ -102,13 +82,7 @@ class StorageManager {
     }
 
     try {
-      const data = this.historyTests.map((tests) => {
-        return tests.map((tool) => ({
-          name: tool.name,
-          arguments: tool.arguments,
-        }));
-      });
-      this.storage.setItem(this.STORAGE_KEY, JSON.stringify(data));
+      this.storage.setItem(this.STORAGE_KEY, JSON.stringify(this.historyTests));
     } catch (e) {
       console.error("Error in StorageManager.storeLastTests:", e);
     }
@@ -117,14 +91,14 @@ class StorageManager {
 
 class StorageStore {
   private listeners: Set<() => void> = new Set();
-  private cachedSnapshot: PallasTool[][] = [];
+  private cachedSnapshot: TestableTool[][] = [];
   private isInitialized = false;
 
   constructor(private storageManager: StorageManager) {}
 
   async initialize(): Promise<void> {
     if (this.isInitialized) return;
-    
+
     await this.storageManager.loadSaved();
     this.cachedSnapshot = this.storageManager.getHistoryTests();
     this.isInitialized = true;
@@ -159,13 +133,9 @@ class StorageStore {
   }
 }
 
-const storage = new LocalStorage();
-const storageManager = new StorageManager(storage);
-const storageStore = new StorageStore(storageManager);
-
 function useStorageManager() {
   const [isStorageLoaded, setIsStorageLoaded] = useState(false);
-  
+
   const historyTests = useSyncExternalStore(
     storageStore.subscribe,
     storageStore.getSnapshot,
@@ -177,7 +147,7 @@ function useStorageManager() {
       await storageStore.initialize();
       setIsStorageLoaded(true);
     };
-    
+
     initializeStorage();
   }, []);
 
@@ -192,14 +162,37 @@ function useStorageManager() {
   };
 }
 
-interface TestTabProps {
-  tools: Tool[];
-  callTool: (toolName: string, args: Record<string, unknown>) => Promise<void>;
-  isConnected: boolean;
+function filterTestCases(
+  declaration: SelectedTest[],
+  available: TestCaseMap,
+): TestCaseMap {
+  const map: TestCaseMap = new Map();
+  for (const selected of declaration) {
+    const key = selected.name;
+    if (available.has(key)) {
+      const tool = available.get(key);
+      if (tool) {
+        map.set(key, tool);
+      }
+    }
+  }
+
+  return map;
 }
 
+const csvLoader = new BrowserCSVLoader();
+
+const testCaseManager = new TestCaseManager({
+  csvLoader,
+  dataSource: "testCases.csv",
+});
+
+const storage = new LocalStorage();
+const storageManager = new StorageManager(storage);
+const storageStore = new StorageStore(storageManager);
+
 const TestTab = ({ tools, callTool }: TestTabProps) => {
-  const [myCategories, setMyCategories] = useState<Category[]>([]);
+  const [availableTools, setAvailableTools] = useState<Tool[]>([]);
   const [isDataLoaded, setIsDataLoaded] = useState(false);
   const [fileUploadError, setFileUploadError] = useState<string | null>(null);
   const { historyTests, storeTests, isStorageLoaded } = useStorageManager();
@@ -228,14 +221,13 @@ const TestTab = ({ tools, callTool }: TestTabProps) => {
   );
 
   const handleRunTests = useCallback(
-    async (data: TestSelection[]) => {
+    async (data: SelectedTest[]) => {
       const testCases = testCaseManager.getTestCases() || new Map();
       const filter = filterTestCases(data, testCases);
 
       for (const [name, tool] of filter.entries()) {
         console.info("calling tool: " + name);
-        //@ts-expect-error PallasTool
-        callTool(name, tool.arguments);
+        callTool(name, tool.arguments as Record<string, unknown>);
       }
 
       await storeTests(filter);
@@ -243,22 +235,21 @@ const TestTab = ({ tools, callTool }: TestTabProps) => {
     [callTool, storeTests],
   );
 
-  const memoTests = useMemo(() => {
+  const memoizedTests = useMemo(() => {
     return isStorageLoaded && historyTests.length > 0 ? historyTests : [];
   }, [historyTests, isStorageLoaded]);
 
   useEffect(() => {
     if (isDataLoaded) {
-      setMyCategories(parsedToolForSelector(tools));
+      setAvailableTools(tools);
     }
   }, [tools, isDataLoaded]);
 
-  const memoCallTools = useCallback(
-    async (arr: Pick<PallasTool, "arguments" | "name">[]): Promise<void> => {
+  const memoizedCallTools = useCallback(
+    async (arr: TestableTool[]): Promise<void> => {
       const promises = arr.map(async (testTool) => {
         console.info("calling tool: " + testTool.name);
-        //@ts-expect-error PallasTool
-        const res = await callTool(testTool.name, testTool.arguments);
+        const res = await callTool(testTool.name, testTool.arguments as Record<string, unknown>);
         return res;
       });
 
@@ -269,10 +260,10 @@ const TestTab = ({ tools, callTool }: TestTabProps) => {
   );
 
   const handlePastTestClick = useCallback(
-    (pastTests: PallasTool[]) => {
-      memoCallTools(pastTests);
+    (pastTests: TestableTool[]) => {
+      memoizedCallTools(pastTests);
     },
-    [memoCallTools],
+    [memoizedCallTools],
   );
 
   return (
@@ -283,7 +274,7 @@ const TestTab = ({ tools, callTool }: TestTabProps) => {
             htmlFor="csv-upload"
             className="block text-sm font-medium mb-2"
           >
-            Upload Test Cases CSV
+            Upload CSV
           </label>
           <input
             id="csv-upload"
@@ -300,10 +291,10 @@ const TestTab = ({ tools, callTool }: TestTabProps) => {
 
       {isDataLoaded && (
         <>
-          <PastTests history={memoTests} onTestsClick={handlePastTestClick} />
-          {myCategories && (
-            <MultiLevelSelector
-              categories={myCategories}
+          <PastTests history={memoizedTests} onTestsClick={handlePastTestClick} />
+          {availableTools && (
+            <FlatTestSelector
+              tools={availableTools}
               enabledTests={testCaseManager.getTestCases() || new Map()}
               onRunTests={handleRunTests}
             />
@@ -313,61 +304,5 @@ const TestTab = ({ tools, callTool }: TestTabProps) => {
     </TabsContent>
   );
 };
-
-function parsedToolForSelector(tools: Tool[]): Category[] {
-  const delimiter = "-";
-  let firstDelimiter: number;
-  const map = new Map<string, Category>();
-
-  function ensureCategory(category?: string): Category {
-    if (!category) category = "uncategorized";
-    if (!map.has(category)) {
-      map.set(category, {
-        name: category,
-        expanded: true,
-        items: [],
-      });
-    }
-    return map.get(category)!;
-  }
-
-  for (const tool of tools) {
-    firstDelimiter = tool.name.indexOf(delimiter);
-
-    if (firstDelimiter === -1) {
-      const category = ensureCategory();
-      category.items.push({
-        name: tool.name,
-      });
-    } else {
-      const category = ensureCategory(tool.name.substring(0, firstDelimiter));
-      category.items.push({
-        name: tool.name.substring(firstDelimiter + 1),
-      });
-    }
-  }
-
-  return [...map.values()];
-}
-
-function filterTestCases(
-  declaration: TestSelection[],
-  available: TestCaseMap,
-): TestCaseMap {
-  const map: TestCaseMap = new Map();
-  for (const selected of declaration) {
-    const key = `${selected.category}-${selected.test}`;
-    console.debug("checking", key, available.has(key));
-    if (available.has(key)) {
-      console.info("has " + key);
-      const tool = available.get(key);
-      if (tool) {
-        map.set(key, tool);
-      }
-    }
-  }
-
-  return map;
-}
 
 export default TestTab;

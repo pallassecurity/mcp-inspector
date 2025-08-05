@@ -1,0 +1,9 @@
+prompt,server,tool,arguments
+what repositories do I have on github,github,search_repositories,"{""query"": ""user:dchen-pallas""}"
+what repositories do I have on github,github,get_me,"{""reason"": ""Getting user info to then search their repositories""}"
+go direct message David Chen and say hi,slack,slack_open_direct_message,"{""user_ids"": [""U08PQ6LMX3L""]}"
+go direct message David Chen and say hi,slack,slack_get_user_ids,"{""keywords"": [""David Chen""]}"
+list users in my Slack,slack,slack_get_users,{}
+Summarize the most recent update made in my notion instance,notion,API-post-search,"{""page_size"": 1, ""query"": """", ""sort"": {""direction"": ""descending"", ""timestamp"": ""last_edited_time""}}"
+get my last event in my calendar. only give me one result,calendar,search_events_on_calendar,"{""params"":{""order_by"": ""startTime"", ""calendar_id"": ""primary"", ""max_results"": 1, ""single_events"": true}}"
+list my calendars I have access to,calendar,list_calendars,{}

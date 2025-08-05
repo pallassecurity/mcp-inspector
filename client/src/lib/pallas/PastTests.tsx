@@ -1,8 +1,8 @@
-import { PallasTool } from "./index";
+import { TestableTool } from "./index";
 
 interface PastTestProps {
-  history: PallasTool[][];
-  onTestsClick: (tests: PallasTool[]) => void;
+  history: TestableTool[][];
+  onTestsClick: (tests: TestableTool[]) => void;
 }
 
 function PastTests({ history, onTestsClick }: PastTestProps) {

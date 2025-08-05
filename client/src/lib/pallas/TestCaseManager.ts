@@ -1,4 +1,4 @@
-import { PallasTool } from "./index.js";
+import { TestableTool } from "./index.js";
 import { CSVLoader } from "./csv.js";
 
 interface TestCaseManagerConfig {
@@ -21,7 +21,7 @@ interface TestResults {
 }
 
 class TestCaseManager {
-  private testCases: Map<string, PallasTool> | undefined;
+  private testCases: Map<string, TestableTool> | undefined;
   private csvLoader: CSVLoader;
   private dataSource: string;
 
@@ -34,24 +34,25 @@ class TestCaseManager {
 
   async loadTestParameters(): Promise<void> {
     try {
-      const us = await this.csvLoader.loadCSV(this.dataSource);
-      console.log(us);
-      console.log(this._generateMap(us));
-      this.testCases = this._generateMap(us);
+      const csv = await this.csvLoader.loadCSV(this.dataSource);
+      console.log(this._generateMap(csv));
+      this.testCases = this._generateMap(csv);
     } catch (error) {
       console.error("Failed to load test parameters:", error);
       throw error;
     }
   }
 
-  getTestCases(): Map<string, PallasTool> | undefined {
+  getTestCases(): Map<string, TestableTool> | undefined {
     return this.testCases;
   }
 
-  private _generateMap(toolCalls: TestParameters[]): Map<string, PallasTool> {
+  private _generateMap(toolCalls: TestParameters[]): Map<string, TestableTool> {
     const map = new Map();
     for (const toolCall of toolCalls) {
-      const tool = PallasTool.fromNotionCSV(toolCall as Record<string, string>);
+      const tool = TestableTool.fromCSV(
+        toolCall as Record<string, string>,
+      );
       map.set(tool.name, tool);
     }
     return map;
@@ -59,4 +60,9 @@ class TestCaseManager {
 }
 
 export { TestCaseManager };
-export type { TestCaseManagerConfig as ITestCaseManagerConfig, TestParameters, TestConfig, TestResults };
+export type {
+  TestCaseManagerConfig,
+  TestParameters,
+  TestConfig,
+  TestResults,
+};
