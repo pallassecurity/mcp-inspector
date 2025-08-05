@@ -2,8 +2,8 @@
 
 The MCP inspector that a tab that can do multiple tool calls at once. This extends the base [MCP inspector](https://github.com/pallassecurity/mcp-inspector)
 
-![MCP Inspector Screenshot](https://raw.githubusercontent.com/pallassecurity/mcp-inspector/single/screens/upload.png)
-![Selection Previous tests](https://raw.githubusercontent.com/pallassecurity/mcp-inspector/single/screens/upload.png)
+![Upload previous tests](https://raw.githubusercontent.com/pallassecurity/mcp-inspector/refs/heads/main/screens/upload.png)
+![Selection Previous tests](https://raw.githubusercontent.com/pallassecurity/mcp-inspector/refs/heads/main/screens/selection.png)
 
 
 ## Prerequisite
@@ -22,3 +22,6 @@ get_me,"{""reason"": ""Getting user info to then search their repositories""}"
 - Select tools which you want to test immediate
 - Click "Run"
 - Selected tool will be called with parameters from CSV
+
+## Features 
+- Saves locally last few calls for quicker calls
